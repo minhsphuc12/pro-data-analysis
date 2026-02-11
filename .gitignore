@@ -7,7 +7,8 @@
 # Project folders (local data / output)
 documents/
 queries/
-
+do-not-use-SKILL.txt
+SECURITY-CHECK.md
 # -----------------------------------------------------------------------------
 # Python
 # -----------------------------------------------------------------------------
