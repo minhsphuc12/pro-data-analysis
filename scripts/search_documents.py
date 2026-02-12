@@ -85,7 +85,7 @@ def _save_cache(filepath: str, rows: list[dict]):
 # Doc type: "dwh_tables" | "dwh_columns" | "source_tables" | "source_columns" | None (generic)
 def _doc_type_from_filename(filename: str) -> tuple[str | None, str | None]:
     """
-    Return (doc_type, source_name). source_name is set for source_* types (e.g. "cif", "appraisal").
+    Return (doc_type, source_name). source_name is set for source_* types (e.g. "source-a", "source-b").
     """
     base = Path(filename).stem.lower()
     if base == "dwh-meta-tables":
@@ -295,7 +295,7 @@ def _file_matches_db(filepath: str, db: str | None) -> bool:
     db:
       - None       -> accept all files
       - "DWH"      -> only DWH docs (dwh-meta-*)
-      - other name -> only source docs whose [source] matches db lowercased (pol, los, cif, ...)
+      - other name -> only source docs whose [source] matches db lowercased (source-a, source-b, ...)
     """
     if not db:
         return True
@@ -488,7 +488,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=200, help="Max results (default: 200)")
     parser.add_argument(
         "--db",
-        help="Limit docs to a specific system: DWH (warehouse), or source alias like POL, LOS, CIF, ...",
+        help="Limit docs to a specific system: DWH (warehouse), or source alias like SOURCE_A, SOURCE_B, ...",
     )
     parser.add_argument("--format", choices=["text", "json", "markdown"], default="text")
     args = parser.parse_args()

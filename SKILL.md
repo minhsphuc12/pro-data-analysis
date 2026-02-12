@@ -7,7 +7,7 @@ description: >
   analysis through data discovery, query design, testing, optimization, to documented output.
 license: MIT
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
   domain: data-analytics
   triggers: >
     data analysis, SQL query, business report, find tables, DWH query, data warehouse,
@@ -168,7 +168,7 @@ The `documents/` folder contains **two types** of standardized Excel metadata; s
   Use when the question is about **tables/columns in the DWH** (reporting, KPI, join trong DWH).
 
 - **Source-system metadata** (từng hệ thống nguồn riêng lẻ):
-  - `[source]-meta-tables.xlsx`: Table Name, Description, Care, Type (ví dụ `cif-meta-tables.xlsx`)
+  - `[source]-meta-tables.xlsx`: Table Name, Description, Care, Type (ví dụ `sourceA-meta-tables.xlsx`)
   - `[source]-meta-columns.xlsx`: Column Name, Data Type, Comment, Sample Data, Table Name
   Use when the question involves **data từ hệ thống nguồn** (ETL mapping, nguồn gốc dữ liệu, từ điển source).
 
@@ -456,6 +456,39 @@ Load optimization reference: `references/optimization.md`
    - Performance notes
    - Any assumptions or limitations
 
+4. **Session knowledge distillation** (when the job finishes successfully):  
+   Distil what you learned in this session and persist it into the knowledge-base files below.  
+   **One object = one file**: each table (single-table) or each set of joined tables (multiple-tables) has exactly one knowledge file. If a file for that object already exists, **read it first**, then **merge/append** the new learnings (with date and brief task context) into the same file so knowledge accumulates across tasks.
+
+   - **Folder `single-table/`**  
+     Use when the task involved **one main table** (or you want to record what you learned about one table).  
+     Content to capture: actual state of data in the table, which columns are important, usage, purpose, how to interpret values correctly, null/edge cases, sample value patterns, and any caveats.  
+     **File name**: `{source_db}_{schema}_{table}.md`  
+     - `source_db`: connection alias (e.g. `DWH`, `SOURCE_A`, `SOURCE_B`).  
+     - `schema`: schema/owner of the table.  
+     - `table`: table name.  
+     Example: `DWH_DWH_FACT_SALES.md`, `SOURCE_A_SOURCE_A_ACCOUNTS.md`.
+
+   - **Folder `multiple-tables/`**  
+     Use when the task required **joining two or more tables**.  
+     Content to capture: how and why these tables are connected, join keys and conditions, usage and purpose of the combination, correct interpretation of the result set, typical filters, and gotchas (e.g. duplicates, nulls on join keys).  
+     **File name**: `{source_db}_{table1}_{table2}[_{table3}…].md`  
+     - Use the same `source_db` for the object; list tables in a consistent order (e.g. fact first, then dimensions).  
+     Example: `DWH_FACT_SALES_DIM_CUSTOMER.md`, `DWH_FACT_SALES_DIM_CUSTOMER_DIM_PRODUCT.md`.
+
+   **Format inside each file** (Markdown): use clear headings (e.g. Purpose, Important columns, Join conditions, Data quality, Session notes) and append new session notes with a date and short task reference so the file remains one cumulative knowledge base per object.
+
+   **Security — knowledge base content:**  
+   Do **NOT** write any of the following into `single-table/` or `multiple-tables/` files (to avoid leaking sensitive company information, especially if these folders are ever committed or shared):
+
+   - **Real data samples or row-level values** from production (e.g. actual IDs, names, amounts, dates that identify real entities). Use only **generic placeholders or value types** (e.g. "values like 'ACTIVE'/'PENDING'", "numeric ID", "date range").
+   - **PII or confidential business data**: no real customer names, emails, phone numbers, account numbers, contract values, or internal codes that could identify people or deals.
+   - **Internal-only identifiers**: no real hostnames, instance names, schema names that reveal company infrastructure; prefer generic aliases (e.g. DWH, SOURCE_A) or role-based names.
+   - **Proprietary business rules or KPIs** that are strictly confidential (if in doubt, describe logic in abstract terms only, without numbers or formulas that are company secret).
+   - **Connection strings, credentials, or environment details** (no DSN, host, database name beyond the generic alias used in the skill).
+
+   When describing "sample value patterns" or "data quality", stick to **structure and semantics** (e.g. "column allows NULL; distinct values observed: status-like codes") rather than dumping real values. If the task revealed sensitive context, record only **what is needed for future queries** (e.g. join key names, filter column names, data types) and omit the sensitive detail.
+
 ## Reference Guide
 
 Load detailed guidance based on context:
@@ -468,6 +501,7 @@ Load detailed guidance based on context:
 | Database Design | `references/database-design.md` | Normalization, keys, constraints, schemas |
 | Dialect Differences | `references/dialect-differences.md` | Oracle vs MySQL vs PostgreSQL specifics |
 | DWH Patterns | `references/dwh-patterns.md` | Star schema, SCD, ETL, fact/dimension patterns |
+| Table/join knowledge | `single-table/{db}_{schema}_{table}.md`, `multiple-tables/{db}_{t1}_{t2}….md` | Before querying a table or join, check if a knowledge file exists and load it for context |
 
 ## Scripts Reference
 
@@ -504,12 +538,14 @@ Default alias: `DWH` (Oracle datawarehouse)
 ```
 documents/      -> Excel metadata (DWH + source systems). Chuẩn khai thác:
   dwh-meta-tables.xlsx, dwh-meta-columns.xlsx  -> DWH (bảng/cột tích hợp)
-  [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Từ điển từng hệ thống nguồn (cif, appraisal, ...)
+  [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Từ điển từng hệ thống nguồn (source-a, source-b, ...)
   *glossary*.xlsx, *bg-*.xlsx (business glossary) -> Thuật ngữ, định nghĩa, cách tính, Bảng/Trường DWH, SQL tính toán (dùng trong Phase 1)
 queries/        -> Existing SQL queries (reference for patterns)
 queries/agent-written/  -> Output: queries written by this agent
 references/     -> SQL and DWH reference guides
 scripts/        -> Python tools for database inspection and query testing
+single-table/   -> Knowledge base: one file per table. Naming: {source_db}_{schema}_{table}.md. Accumulate learnings across sessions.
+multiple-tables/ -> Knowledge base: one file per set of joined tables. Naming: {source_db}_{table1}_{table2}[_{table3}…].md. Accumulate learnings across sessions.
 ```
 
 ## Constraints
@@ -528,6 +564,7 @@ scripts/        -> Python tools for database inspection and query testing
 - Run EXPLAIN PLAN before executing query (Phase 5)
 - Wrap test execution with safety limits (Phase 5)
 - Save output query to `queries/agent-written/` with header comment (Phase 7)
+- When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/` and/or `multiple-tables/` (one file per object; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
 - Handle NULLs explicitly in all comparisons
 - Apply partition pruning on partitioned tables
 - Use column comments to understand business meaning of data
