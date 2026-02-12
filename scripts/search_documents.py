@@ -5,6 +5,10 @@ Reads .xlsx/.xls files from the documents/ folder, searches for keywords across
 sheet names, column headers, and cell values.  Caches parsed data as JSON for
 fast repeat searches.
 
+Supports two documentation types:
+- DWH: dwh-meta-tables.xlsx, dwh-meta-columns.xlsx (Vietnamese headers)
+- Source systems: [source]-meta-tables.xlsx, [source]-meta-columns.xlsx (English headers)
+
 Usage:
     python search_documents.py --keyword "khach hang"
     python search_documents.py --keyword "doanh thu" --folder documents/
@@ -72,6 +76,134 @@ def _save_cache(filepath: str, rows: list[dict]):
     cp = _cache_path(filepath)
     with open(cp, "w", encoding="utf-8") as f:
         json.dump({"file_hash": _file_hash(filepath), "rows": rows}, f, ensure_ascii=False)
+
+
+# ============================================================================
+# Document type detection and column mappings
+# ============================================================================
+
+# Doc type: "dwh_tables" | "dwh_columns" | "source_tables" | "source_columns" | None (generic)
+def _doc_type_from_filename(filename: str) -> tuple[str | None, str | None]:
+    """
+    Return (doc_type, source_name). source_name is set for source_* types (e.g. "cif", "appraisal").
+    """
+    base = Path(filename).stem.lower()
+    if base == "dwh-meta-tables":
+        return "dwh_tables", None
+    if base == "dwh-meta-columns":
+        return "dwh_columns", None
+    if base.endswith("-meta-tables"):
+        return "source_tables", base.replace("-meta-tables", "")
+    if base.endswith("-meta-columns"):
+        return "source_columns", base.replace("-meta-columns", "")
+    return None, None
+
+
+# Header name (normalized: strip, lower) -> canonical key for context
+# DWH tables: Tên Bảng- dwh, Mô tả bảng, Schema, Source, Domain, ...
+# DWH columns: TÊN BẢNG, TÊN TRƯỜNG, MÔ TẢ TRƯỜNG, KIỂU DỮ LIỆU, ...
+# Source tables: Table Name, Description, Care, Type
+# Source columns: Column Name, Data Type, Comment, Sample Data, Table Name
+
+def _normalize_header(h: str) -> str:
+    return (h or "").strip().lower()
+
+
+# Map known headers (normalized) to canonical key
+def _header_to_canonical(header: str, doc_type: str | None) -> str | None:
+    n = _normalize_header(header)
+    if not n:
+        return None
+    # DWH: Vietnamese headers
+    if doc_type in ("dwh_tables", "dwh_columns", None):
+        if n in ("tên bảng- dwh", "tên bảng", "ten bang", "table name"):
+            return "table_name"
+        if n in ("tên trường", "tên trưòng", "ten truong", "column name"):
+            return "column_name"
+        if n in ("mô tả bảng", "mô tả trường", "mo ta bang", "mo ta truong", "description", "comment"):
+            return "description"
+        if n in ("kiểu dữ liệu", "kieu du lieu", "data type"):
+            return "data_type"
+        if n in ("schema", "source", "domain", "hệ thống source", "he thong source"):
+            return "source" if "source" in n or n == "source" else n
+    # Source docs: English headers (Table Name, Description, Column Name, Data Type, Comment, Sample Data)
+    if doc_type in ("source_tables", "source_columns", None):
+        if n == "table name":
+            return "table_name"
+        if n == "column name":
+            return "column_name"
+        if n in ("description", "comment"):
+            return "description"
+        if n == "data type":
+            return "data_type"
+        if n in ("care", "type"):
+            return n
+        if n == "sample data":
+            return "sample_data"
+    return None
+
+
+def _build_header_index(headers: list[str], doc_type: str | None) -> dict[str, int]:
+    """Map canonical key -> column index (first match)."""
+    idx = {}
+    for i, h in enumerate(headers):
+        c = _header_to_canonical(h, doc_type)
+        if c and c not in idx:
+            idx[c] = i
+    return idx
+
+
+def _row_to_normalized_context(row: dict, doc_type: str | None, source_name: str | None) -> str:
+    """
+    Build a readable context string for a row using known column semantics.
+    Falls back to key=value for first 8 fields if not recognized.
+    """
+    headers = row.get("headers") or []
+    values = row.get("values") or []
+    if doc_type and headers:
+        idx = _build_header_index(headers, doc_type)
+        parts = []
+        if "table_name" in idx:
+            v = values[idx["table_name"]] if idx["table_name"] < len(values) else ""
+            if v:
+                parts.append(f"Table={v}")
+        if "column_name" in idx and doc_type in ("dwh_columns", "source_columns"):
+            v = values[idx["column_name"]] if idx["column_name"] < len(values) else ""
+            if v:
+                parts.append(f"Column={v}")
+        if "description" in idx:
+            v = values[idx["description"]] if idx["description"] < len(values) else ""
+            if v:
+                parts.append(f"Description={v[:60]}{'…' if len(v) > 60 else ''}")
+        if "data_type" in idx:
+            v = values[idx["data_type"]] if idx["data_type"] < len(values) else ""
+            if v:
+                parts.append(f"Type={v}")
+        if source_name:
+            parts.insert(0, f"Source={source_name}")
+        if parts:
+            return " | ".join(parts)
+    # Fallback: first 8 non-empty key=value
+    context_parts = []
+    for i, val in enumerate(values[:12]):
+        if val:
+            hdr = headers[i] if i < len(headers) else f"col_{i}"
+            context_parts.append(f"{hdr}={val}")
+    return " | ".join(context_parts[:8])
+
+
+def _row_table_column(row: dict, doc_type: str | None) -> tuple[str | None, str | None]:
+    """Return (table_name, column_name) when available from row."""
+    headers = row.get("headers") or []
+    values = row.get("values") or []
+    idx = _build_header_index(headers, doc_type)
+    table_name = None
+    column_name = None
+    if "table_name" in idx and idx["table_name"] < len(values):
+        table_name = (values[idx["table_name"]] or "").strip() or None
+    if "column_name" in idx and idx["column_name"] < len(values):
+        column_name = (values[idx["column_name"]] or "").strip() or None
+    return table_name, column_name
 
 
 # ============================================================================
@@ -192,45 +324,64 @@ def search_documents(keyword: str, folder: str = "documents/",
             sheet = row["sheet"]
             if sheet not in seen_sheets and _match(keyword, sheet, use_regex):
                 seen_sheets.add(sheet)
-                results.append({
+                _dt, _sn = _doc_type_from_filename(row["file"])
+                entry = {
                     "file": row["file"], "sheet": sheet,
                     "row_num": None, "matched_field": "sheet_name",
                     "context": f"Sheet name: {sheet}",
-                })
+                }
+                if _dt:
+                    entry["doc_type"] = _dt
+                if _sn:
+                    entry["source_name"] = _sn
+                results.append(entry)
+                seen_sheets.add(sheet)
 
         # Search in headers (reported once per sheet)
         seen_headers = set()
         for row in rows:
             sheet = row["sheet"]
+            _dt, _sn = _doc_type_from_filename(row["file"])
             for hi, h in enumerate(row["headers"]):
                 key = (sheet, hi)
                 if key not in seen_headers and _match(keyword, h, use_regex):
                     seen_headers.add(key)
-                    results.append({
+                    entry = {
                         "file": row["file"], "sheet": sheet,
                         "row_num": 1, "matched_field": "header",
                         "context": f"Header [{hi}]: {h}",
-                    })
+                    }
+                    if _dt:
+                        entry["doc_type"] = _dt
+                    if _sn:
+                        entry["source_name"] = _sn
+                    results.append(entry)
 
         # Search in cell values
         for row in rows:
+            _dt, _sn = _doc_type_from_filename(row["file"])
             for vi, v in enumerate(row["values"]):
                 if _match(keyword, v, use_regex):
                     header = row["headers"][vi] if vi < len(row["headers"]) else f"col_{vi}"
-                    # Build context: show the whole row as key=value pairs
-                    context_parts = []
-                    for i, val in enumerate(row["values"]):
-                        if val:
-                            hdr = row["headers"][i] if i < len(row["headers"]) else f"col_{i}"
-                            context_parts.append(f"{hdr}={val}")
-                    context_str = " | ".join(context_parts[:8])  # limit to 8 fields
+                    # Use normalized context when we have a known doc type
+                    ctx = _row_to_normalized_context(row, _dt, _sn)
+                    tbl, col = _row_table_column(row, _dt)
 
-                    results.append({
+                    entry = {
                         "file": row["file"], "sheet": row["sheet"],
                         "row_num": row["row_num"],
                         "matched_field": f"cell:{header}",
-                        "context": context_str,
-                    })
+                        "context": ctx,
+                    }
+                    if _dt:
+                        entry["doc_type"] = _dt
+                    if _sn:
+                        entry["source_name"] = _sn
+                    if tbl:
+                        entry["table_name"] = tbl
+                    if col:
+                        entry["column_name"] = col
+                    results.append(entry)
 
             if len(results) >= limit:
                 break
@@ -257,12 +408,15 @@ def format_text(results: list[dict]) -> str:
         return "Không tìm thấy kết quả nào."
 
     lines = [f"Tìm thấy {len(results)} kết quả:\n"]
-    lines.append(f"{'FILE':<30} {'SHEET':<25} {'ROW':<6} {'MATCH TYPE':<15} {'CONTEXT'}")
+    lines.append(f"{'FILE':<28} {'TYPE':<14} {'SHEET':<20} {'ROW':<5} {'MATCH':<12} {'CONTEXT'}")
     lines.append("-" * 140)
     for r in results:
+        doc_type = r.get("doc_type") or ""
+        if r.get("source_name"):
+            doc_type = doc_type + ":" + r["source_name"]
         lines.append(
-            f"{r['file']:<30} {r['sheet']:<25} {str(r['row_num'] or ''):<6} "
-            f"{r['matched_field']:<15} {r['context'][:90]}"
+            f"{r['file']:<28} {doc_type:<14} {r['sheet']:<20} {str(r['row_num'] or ''):<5} "
+            f"{r['matched_field']:<12} {(r['context'] or '')[:85]}"
         )
     return "\n".join(lines)
 
@@ -275,12 +429,15 @@ def format_markdown(results: list[dict]) -> str:
     if not results:
         return "Không tìm thấy kết quả nào."
     lines = [f"Tìm thấy **{len(results)}** kết quả:\n"]
-    lines.append("| File | Sheet | Row | Match | Context |")
-    lines.append("|------|-------|-----|-------|---------|")
+    lines.append("| File | Type | Sheet | Row | Match | Context |")
+    lines.append("|------|------|-------|-----|-------|---------|")
     for r in results:
-        ctx = (r["context"] or "")[:80].replace("|", "\\|")
+        doc_type = r.get("doc_type") or ""
+        if r.get("source_name"):
+            doc_type = f"{doc_type}:{r['source_name']}"
+        ctx = (r["context"] or "")[:75].replace("|", "\\|")
         lines.append(
-            f"| {r['file']} | {r['sheet']} | {r['row_num'] or ''} "
+            f"| {r['file']} | {doc_type} | {r['sheet']} | {r['row_num'] or ''} "
             f"| {r['matched_field']} | {ctx} |"
         )
     return "\n".join(lines)

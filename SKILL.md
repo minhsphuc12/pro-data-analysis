@@ -146,15 +146,26 @@ Search **three sources in parallel** to find relevant tables and columns:
 ```bash
 python @scripts/search_documents.py --keyword "your keyword" --folder documents/
 ```
-The `documents/` folder contains Excel files describing ~200 DWH tables with columns
-and their business meanings. Always search here first.
+The `documents/` folder contains **two types** of standardized Excel metadata; search here first and use the right type for the task:
+
+- **DWH metadata** (data warehouse — consolidated from all sources):
+  - `dwh-meta-tables.xlsx`: bảng DWH (Tên Bảng, Mô tả bảng, Schema, Source, Domain, Phân loại DIM/FACT/RPT, …)
+  - `dwh-meta-columns.xlsx`: cột DWH (Tên Bảng, Tên Trường, Mô tả, Kiểu dữ liệu, Mapping Rule, CDE/PII, …)
+  Use when the question is about **tables/columns in the DWH** (reporting, KPI, join trong DWH).
+
+- **Source-system metadata** (từng hệ thống nguồn riêng lẻ):
+  - `[source]-meta-tables.xlsx`: Table Name, Description, Care, Type (ví dụ `cif-meta-tables.xlsx`)
+  - `[source]-meta-columns.xlsx`: Column Name, Data Type, Comment, Sample Data, Table Name
+  Use when the question involves **data từ hệ thống nguồn** (ETL mapping, nguồn gốc dữ liệu, từ điển source).
+
+Kết quả search có `doc_type` (dwh_tables, dwh_columns, source_tables, source_columns) và `source_name` (với file source). Ưu tiên DWH docs cho câu hỏi báo cáo/analytics; khai thác source docs khi cần tra nguồn hoặc mapping ETL.
 
 #### 2b. Search Database Schema Metadata
 ```bash
 python @scripts/search_schema.py --keyword "your keyword" --db DWH
 python @scripts/search_schema.py --keyword "your keyword" --search-in comments --schema OWNER
 ```
-Most DWH columns have **comments** that describe their business meaning. This is critical
+Most database (excel DWH) columns have **comments** that describe their business meaning. This is critical
 for understanding what data is available. Search both column names AND comments.
 
 #### 2c. Search Previous Queries
@@ -450,7 +461,7 @@ Load detailed guidance based on context:
 |--------|---------|-----------|
 | `@scripts/check_table.py` | Inspect table structure + comments | `python @scripts/check_table.py SCHEMA TABLE --db DWH` |
 | `@scripts/search_schema.py` | Search DB metadata by name/comment | `python @scripts/search_schema.py -k "keyword" --db DWH` |
-| `@scripts/search_documents.py` | Search Excel docs | `python @scripts/search_documents.py -k "keyword"` |
+| `@scripts/search_documents.py` | Search Excel docs (DWH + source meta) | `python @scripts/search_documents.py -k "keyword" --folder documents/` |
 | `@scripts/explain_query.py` | Run EXPLAIN PLAN | `python @scripts/explain_query.py --db DWH --file q.sql` |
 | `@scripts/run_query_safe.py` | Execute with safety limits | `python @scripts/run_query_safe.py --db DWH --file q.sql` |
 | `@scripts/find_relationships.py` | Find FK / join paths | `python @scripts/find_relationships.py -s SCHEMA -t TABLE` |
@@ -476,9 +487,9 @@ Default alias: `DWH` (Oracle datawarehouse)
 ## Folder Structure
 
 ```
-documents/      -> Excel documentation of DWH tables (~200 tables documented)
-  dwh-meta-table.xlsx -> table metadata
-  dwh-meta-column.xlsx -> column metadata
+documents/      -> Excel metadata (DWH + source systems). Chuẩn khai thác:
+  dwh-meta-tables.xlsx, dwh-meta-columns.xlsx  -> DWH (bảng/cột tích hợp)
+  [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Từ điển từng hệ thống nguồn (cif, appraisal, ...)
 queries/        -> Existing SQL queries (reference for patterns)
 queries/agent-written/  -> Output: queries written by this agent
 references/     -> SQL and DWH reference guides
@@ -494,7 +505,7 @@ scripts/        -> Python tools for database inspection and query testing
 - Incorporate user feedback / domain knowledge when provided at checkpoints
 - Re-present and re-confirm if user corrections are significant
 - Create task brief before data discovery (Phase 1)
-- Search BOTH documents/ AND database metadata for data discovery (Phase 2)
+- Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2)
 - Document data mapping before writing query (Phase 3)
 - Write CTEs with inline comments explaining reasoning (Phase 4)
 - Run EXPLAIN PLAN before executing query (Phase 5)
