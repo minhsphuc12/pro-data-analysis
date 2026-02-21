@@ -1,0 +1,2 @@
+# Test dependencies for scripts (run: pip install -r scripts/requirements-test.txt)
+pytest>=7.0.0

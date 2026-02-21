@@ -12,22 +12,47 @@ Usage:
 
 import argparse
 import json
-import sys
 import os
+import sys
+import traceback
 
 # Allow importing sibling module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from db_connector import get_connection, get_db_type
 
 
+def _nullable_display(nullable: bool) -> str:
+    return "YES" if nullable else "NO"
+
+
+def _stats_dict(num_rows, blocks, avg_row_len, last_analyzed) -> dict:
+    return {
+        "num_rows": num_rows,
+        "blocks": blocks,
+        "avg_row_len": avg_row_len,
+        "last_analyzed": str(last_analyzed) if last_analyzed else None,
+    }
+
+
 # ============================================================================
 # Oracle
 # ============================================================================
 
+def _oracle_column_type(row) -> str:
+    """Build Oracle data type string from ALL_TAB_COLUMNS row."""
+    data_type, data_length, precision, scale = row[1], row[2], row[3], row[4]
+    if data_type in ("VARCHAR2", "CHAR"):
+        return f"{data_type}({data_length})"
+    if data_type == "NUMBER" and precision:
+        if scale and scale > 0:
+            return f"{data_type}({precision},{scale})"
+        return f"{data_type}({precision})"
+    return data_type
+
+
 def _oracle_table_info(cursor, schema: str, table_name: str) -> dict:
     info = {"schema": schema, "table": table_name, "db_type": "oracle"}
 
-    # Table comment
     cursor.execute(
         "SELECT COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = :s AND TABLE_NAME = :t",
         {"s": schema, "t": table_name},
@@ -35,7 +60,6 @@ def _oracle_table_info(cursor, schema: str, table_name: str) -> dict:
     row = cursor.fetchone()
     info["table_comment"] = row[0] if row and row[0] else ""
 
-    # Columns + comments (join ALL_TAB_COLUMNS with ALL_COL_COMMENTS)
     cursor.execute("""
         SELECT c.COLUMN_NAME, c.DATA_TYPE, c.DATA_LENGTH, c.DATA_PRECISION,
                c.DATA_SCALE, c.NULLABLE, c.DATA_DEFAULT,
@@ -46,21 +70,16 @@ def _oracle_table_info(cursor, schema: str, table_name: str) -> dict:
         WHERE c.OWNER = :s AND c.TABLE_NAME = :t
         ORDER BY c.COLUMN_ID
     """, {"s": schema, "t": table_name})
-    cols = []
-    for r in cursor.fetchall():
-        dt = r[1]
-        if dt in ("VARCHAR2", "CHAR"):
-            type_str = f"{dt}({r[2]})"
-        elif dt == "NUMBER" and r[3]:
-            type_str = f"{dt}({r[3]},{r[4]})" if r[4] and r[4] > 0 else f"{dt}({r[3]})"
-        else:
-            type_str = dt
-        cols.append({
-            "name": r[0], "data_type": type_str,
-            "nullable": r[5] == "Y", "default": str(r[6]) if r[6] else None,
-            "comment": r[7],
-        })
-    info["columns"] = cols
+    info["columns"] = [
+        {
+            "name": row[0],
+            "data_type": _oracle_column_type(row),
+            "nullable": row[5] == "Y",
+            "default": str(row[6]) if row[6] else None,
+            "comment": row[7],
+        }
+        for row in cursor.fetchall()
+    ]
 
     # Indexes
     cursor.execute("""
@@ -90,16 +109,12 @@ def _oracle_table_info(cursor, schema: str, table_name: str) -> dict:
         for r in cursor.fetchall()
     ]
 
-    # Statistics
     cursor.execute("""
         SELECT NUM_ROWS, BLOCKS, AVG_ROW_LEN, LAST_ANALYZED
         FROM ALL_TABLES WHERE OWNER = :s AND TABLE_NAME = :t
     """, {"s": schema, "t": table_name})
-    s = cursor.fetchone()
-    info["statistics"] = {
-        "num_rows": s[0], "blocks": s[1], "avg_row_len": s[2],
-        "last_analyzed": str(s[3]) if s[3] else None,
-    } if s else {}
+    stats_row = cursor.fetchone()
+    info["statistics"] = _stats_dict(*stats_row) if stats_row else {}
 
     return info
 
@@ -158,17 +173,13 @@ def _mysql_table_info(cursor, schema: str, table_name: str) -> dict:
         for r in cursor.fetchall()
     ]
 
-    # Statistics
     cursor.execute("""
         SELECT TABLE_ROWS, DATA_LENGTH, AVG_ROW_LENGTH, UPDATE_TIME
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
     """, (schema, table_name))
-    s = cursor.fetchone()
-    info["statistics"] = {
-        "num_rows": s[0], "blocks": s[1], "avg_row_len": s[2],
-        "last_analyzed": str(s[3]) if s[3] else None,
-    } if s else {}
+    stats_row = cursor.fetchone()
+    info["statistics"] = _stats_dict(*stats_row) if stats_row else {}
 
     return info
 
@@ -228,7 +239,6 @@ def _pg_table_info(cursor, schema: str, table_name: str) -> dict:
 
     info["partitions"] = []  # PostgreSQL partitions need different handling
 
-    # Statistics
     cursor.execute("""
         SELECT n_live_tup, pg_total_relation_size(c.oid),
                NULL, NULL
@@ -237,11 +247,8 @@ def _pg_table_info(cursor, schema: str, table_name: str) -> dict:
         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = s.schemaname
         WHERE s.schemaname = %s AND s.relname = %s
     """, (schema, table_name))
-    s = cursor.fetchone()
-    info["statistics"] = {
-        "num_rows": s[0], "blocks": s[1], "avg_row_len": s[2],
-        "last_analyzed": str(s[3]) if s[3] else None,
-    } if s else {}
+    stats_row = cursor.fetchone()
+    info["statistics"] = _stats_dict(*stats_row) if stats_row else {}
 
     return info
 
@@ -323,14 +330,14 @@ def _sqlserver_table_info(cursor, schema: str, table_name: str) -> dict:
         WHERE s.name = ? AND t.name = ? AND i.index_id <= 1
         ORDER BY p.partition_number
     """, (schema, table_name))
+    partition_rows = cursor.fetchall()
     info["partitions"] = [
-        {"name": f"Partition_{r[0]}", "position": r[0], "num_rows": r[1], 
-         "high_value": None, "compression": r[2]}
-        for r in cursor.fetchall()
-        if r[2]  # Only if partitioned
+        {"name": f"Partition_{row[0]}", "position": row[0], "num_rows": row[1],
+         "high_value": None, "compression": row[2]}
+        for row in partition_rows
+        if row[2]  # partition_scheme present only when table is partitioned
     ]
 
-    # Statistics
     cursor.execute("""
         SELECT SUM(p.rows) AS num_rows,
                SUM(a.total_pages) * 8 AS total_space_kb,
@@ -344,11 +351,8 @@ def _sqlserver_table_info(cursor, schema: str, table_name: str) -> dict:
         WHERE s.name = ? AND t.name = ?
         GROUP BY t.object_id
     """, (schema, table_name))
-    s = cursor.fetchone()
-    info["statistics"] = {
-        "num_rows": s[0], "blocks": s[1], "avg_row_len": s[2],
-        "last_analyzed": str(s[3]) if s and s[3] else None,
-    } if s else {}
+    stats_row = cursor.fetchone()
+    info["statistics"] = _stats_dict(*stats_row) if stats_row else {}
 
     return info
 
@@ -361,23 +365,22 @@ def format_text(info: dict) -> str:
     lines = []
     sep = "=" * 90
 
-    # Header
     lines.append(sep)
     lines.append(f"CẤU TRÚC BẢNG {info['schema']}.{info['table']}  ({info['db_type']})")
     lines.append(sep)
     if info.get("table_comment"):
         lines.append(f"Mô tả: {info['table_comment']}")
 
-    # Columns
     lines.append(f"\nTổng số cột: {len(info['columns'])}\n")
     lines.append(f"{'STT':<5} {'TÊN CỘT':<35} {'KIỂU DỮ LIỆU':<25} {'NULL?':<6} {'MÔ TẢ CỘT'}")
     lines.append("-" * 120)
-    for i, c in enumerate(info["columns"], 1):
-        nullable = "YES" if c["nullable"] else "NO"
-        comment = c.get("comment", "") or ""
-        lines.append(f"{i:<5} {c['name']:<35} {c['data_type']:<25} {nullable:<6} {comment}")
+    for i, col in enumerate(info["columns"], 1):
+        comment = col.get("comment") or ""
+        lines.append(
+            f"{i:<5} {col['name']:<35} {col['data_type']:<25} "
+            f"{_nullable_display(col['nullable']):<6} {comment}"
+        )
 
-    # Indexes
     lines.append(f"\n{sep}\nINDEXES\n{sep}")
     if info["indexes"]:
         for idx in info["indexes"]:
@@ -387,34 +390,36 @@ def format_text(info: dict) -> str:
     else:
         lines.append("\nKhông có index nào.")
 
-    # Partitions
     lines.append(f"\n{sep}\nPARTITIONS\n{sep}")
     if info["partitions"]:
         lines.append(f"\nTổng số partitions: {len(info['partitions'])}\n")
         lines.append(f"{'PARTITION':<30} {'POS':<5} {'NUM_ROWS':<15} {'COMPRESS':<10}")
         lines.append("-" * 60)
-        for p in info["partitions"][:10]:
+        for part in info["partitions"][:10]:
             lines.append(
-                f"{p['name'] or '':<30} {str(p.get('position','')):<5} "
-                f"{str(p.get('num_rows','N/A')):<15} {p.get('compression','NONE'):<10}"
+                f"{part.get('name') or '':<30} {str(part.get('position', '')):<5} "
+                f"{str(part.get('num_rows', 'N/A')):<15} {part.get('compression', 'NONE'):<10}"
             )
         if len(info["partitions"]) > 10:
             lines.append(f"\n... và {len(info['partitions']) - 10} partitions khác")
     else:
         lines.append("\nBảng không được phân vùng.")
 
-    # Statistics
     lines.append(f"\n{sep}\nTHỐNG KÊ\n{sep}")
-    st = info.get("statistics", {})
-    if st:
-        nr = st.get("num_rows")
-        lines.append(f"\nSố dòng (ước tính): {nr:,}" if nr else "\nSố dòng: Chưa có thống kê")
-        bl = st.get("blocks")
-        lines.append(f"Số blocks: {bl:,}" if bl else "Số blocks: N/A")
-        ar = st.get("avg_row_len")
-        lines.append(f"Độ dài TB mỗi dòng: {ar} bytes" if ar else "Độ dài TB: N/A")
-        la = st.get("last_analyzed")
-        lines.append(f"Lần phân tích cuối: {la}" if la else "Chưa phân tích")
+    stats = info.get("statistics", {})
+    if stats:
+        row_count = stats.get("num_rows")
+        lines.append(
+            f"\nSố dòng (ước tính): {row_count:,}" if row_count else "\nSố dòng: Chưa có thống kê"
+        )
+        block_count = stats.get("blocks")
+        lines.append(f"Số blocks: {block_count:,}" if block_count else "Số blocks: N/A")
+        avg_row_len = stats.get("avg_row_len")
+        lines.append(
+            f"Độ dài TB mỗi dòng: {avg_row_len} bytes" if avg_row_len else "Độ dài TB: N/A"
+        )
+        last_analyzed = stats.get("last_analyzed")
+        lines.append(f"Lần phân tích cuối: {last_analyzed}" if last_analyzed else "Chưa phân tích")
 
     return "\n".join(lines)
 
@@ -426,16 +431,16 @@ def format_markdown(info: dict) -> str:
         lines.append(f"> {info['table_comment']}\n")
     lines.append(f"**Database type:** {info['db_type']}\n")
 
-    # Columns
     lines.append("## Columns\n")
     lines.append("| # | Column | Type | Nullable | Comment |")
     lines.append("|---|--------|------|----------|---------|")
-    for i, c in enumerate(info["columns"], 1):
-        nullable = "YES" if c["nullable"] else "NO"
-        comment = (c.get("comment") or "").replace("|", "\\|")
-        lines.append(f"| {i} | {c['name']} | {c['data_type']} | {nullable} | {comment} |")
+    for i, col in enumerate(info["columns"], 1):
+        comment = (col.get("comment") or "").replace("|", "\\|")
+        lines.append(
+            f"| {i} | {col['name']} | {col['data_type']} | "
+            f"{_nullable_display(col['nullable'])} | {comment} |"
+        )
 
-    # Indexes
     lines.append("\n## Indexes\n")
     if info["indexes"]:
         lines.append("| Name | Type | Unique | Columns |")
@@ -445,14 +450,13 @@ def format_markdown(info: dict) -> str:
     else:
         lines.append("_No indexes._")
 
-    # Statistics
     lines.append("\n## Statistics\n")
-    st = info.get("statistics", {})
-    if st:
-        lines.append(f"- **Rows:** {st.get('num_rows', 'N/A')}")
-        lines.append(f"- **Blocks:** {st.get('blocks', 'N/A')}")
-        lines.append(f"- **Avg row length:** {st.get('avg_row_len', 'N/A')}")
-        lines.append(f"- **Last analyzed:** {st.get('last_analyzed', 'N/A')}")
+    stats = info.get("statistics", {})
+    if stats:
+        lines.append(f"- **Rows:** {stats.get('num_rows', 'N/A')}")
+        lines.append(f"- **Blocks:** {stats.get('blocks', 'N/A')}")
+        lines.append(f"- **Avg row length:** {stats.get('avg_row_len', 'N/A')}")
+        lines.append(f"- **Last analyzed:** {stats.get('last_analyzed', 'N/A')}")
 
     return "\n".join(lines)
 
@@ -512,6 +516,5 @@ if __name__ == "__main__":
         print(output)
     except Exception as e:
         print(f"Lỗi: {e}", file=sys.stderr)
-        import traceback
         traceback.print_exc()
         sys.exit(1)
