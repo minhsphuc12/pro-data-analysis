@@ -464,7 +464,7 @@ Load optimization reference: `references/optimization.md`
 
    When describing "sample value patterns" or "data quality", stick to **structure and semantics** (e.g. "column allows NULL; distinct values observed: status-like codes") rather than dumping real values. If the task revealed sensitive context, record only **what is needed for future queries** (e.g. join key names, filter column names, data types) and omit the sensitive detail.
 
-4. **Report to user** with a task reports in task folder:
+4. **Report to user** with a task report name `{task-folder}_README.md` in task folder:
    - Use 7 phases structure 
    - Summarize outcome and generated files of every phases done by this skill 
    - Key tables and columns used (with business meaning)
