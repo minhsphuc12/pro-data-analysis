@@ -81,7 +81,7 @@ After Phase 1 → **[CHECKPOINT 1]**; after Phase 2 → **[CHECKPOINT 2]**; afte
 Before touching any data, clearly define the problem and **enrich it with business glossary** so that Phase 2 data discovery is targeted and aligned with standard definitions.
 
 1. **Business question**: What is the user really asking? Restate it precisely.
-2. **Create task name**: Create single {task-name} for further usage
+2. **Create task name**: Create single {task-name} for further usage, create folder {task-folder} = {YYYY-MM-DD}_{task-name}
 3. **Output definition**: What should the result look like? (columns, rows, format)
 4. **Data modules**: Break into logical data domains (e.g., "customer data", "transaction data")
 5. **Data elements needed**: List specific measures (SUM, COUNT, AVG) and dimensions (GROUP BY)
@@ -97,7 +97,7 @@ Before touching any data, clearly define the problem and **enrich it with busine
    - **DWH table/column, calculation SQL**: Suggested DWH table/column and SQL snippet — note these as candidates for Phase 2 (do not assume they are the only source; still run data discovery and confirm).
    - **Domain, Owning Unit**: Helps with scoping and identifying ownership.
    Enrich the task brief with these so the problem is stated in business language and Phase 2 discovery is more effective.
-8. **Save brief**: Create folder `{YYYY-MM-DD}_{task-name}/` and file `{YYYY-MM-DD}_{task-name}-brief.md` inside it (e.g. `2025-02-22_revenue-by-region/2025-02-22_revenue-by-region-brief.md`). Always use date prefix **{YYYY-MM-DD}_** for task-name files and folders so they sort and navigate easily.
+8. **Save brief**: Create folder `{task-folder}/` and file `{task-folder}-brief.md` inside it (e.g. `2025-02-22_revenue-by-region/2025-02-22_revenue-by-region-brief.md`). Always use date prefix **{YYYY-MM-DD}_** for task-related files and folders so they are naturally sorted and navigated easily.
 
 **Template for brief:**
 
@@ -246,7 +246,7 @@ Key Columns Identified:
 
 ### Phase 3: Data Mapping & Documentation
 
-Create `{YYYY-MM-DD}_{task-name}/{YYYY-MM-DD}_{task-name}-data-mapping.md` in working directory (same dated task folder as Phase 1 brief), documenting everything found:
+Create `{task-folder}/{task-folder}-data-mapping.md` in working directory (same dated task folder as Phase 1 brief), documenting everything found:
 
 ```markdown
 # Data Mapping: {task name}
@@ -427,15 +427,9 @@ Load optimization reference: `references/optimization.md`
 1. **Save query** to `queries/agent-written/{YYYY-MM-DD}_{task-name}.sql`
    - Include standard header comment (purpose, author, date, tables, performance notes)
 
-2. **Update data mapping** document (`{YYYY-MM-DD}_{task-name}/{YYYY-MM-DD}_{task-name}-data-mapping.md`) with final results
+2. **Update data mapping** document (`{task-folder}/{task-folder}-data-mapping.md`) with final results
 
-3. **Report to user** with:
-   - Final query
-   - Key tables and columns used (with business meaning)
-   - Performance notes
-   - Any assumptions or limitations
-
-4. **Session knowledge distillation** (when the job finishes successfully):  
+3. **Session knowledge distillation** (when the job finishes successfully):  
    Distil what you learned in this session and persist it into the knowledge-base files below.  
    **One object = one file**: each table (single-table) or each set of joined tables (multiple-tables) has exactly one knowledge file. If a file for that object already exists, **read it first**, then **merge/append** the new learnings (with date and brief task context) into the same file so knowledge accumulates across tasks.
 
@@ -467,6 +461,13 @@ Load optimization reference: `references/optimization.md`
    - **Connection strings, credentials, or environment details** (no DSN, host, database name beyond the generic alias used in the skill).
 
    When describing "sample value patterns" or "data quality", stick to **structure and semantics** (e.g. "column allows NULL; distinct values observed: status-like codes") rather than dumping real values. If the task revealed sensitive context, record only **what is needed for future queries** (e.g. join key names, filter column names, data types) and omit the sensitive detail.
+
+4. **Report to user** with a task reports in task folder:
+   - Summarize outcome and generated files of every phases done by this skill 
+   - Key tables and columns used (with business meaning)
+   - Performance notes
+   - Any assumptions or limitations
+   - Links to created files
 
 ## Reference Guide
 
@@ -531,7 +532,7 @@ documents/      -> Excel metadata (DWH + source systems). Usage standard:
   [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Individual source system dictionary (source-a, source-b, ...)
   *glossary*.xlsx, *bg-*.xlsx (business glossary) -> Terms, definitions, calculation method, DWH Table/Field, Calculation SQL (used in Phase 1)
 queries/        -> Existing SQL queries (reference for patterns)
-queries/agent-written/  -> Output: queries written by this agent (naming: {YYYY-MM-DD}_{task-name}.sql)
+queries/agent-written/  -> Output: queries written by this agent (naming: {task-folder}.sql)
 references/     -> SQL and DWH reference guides
 scripts/        -> Python tools for database inspection and query testing
 knowledge/single-table/   -> Knowledge base: one file per table. Naming: {source_db}_{schema}_{table}.md. Accumulate learnings across sessions. **Consult at the start of a new task** for relevant tables.
