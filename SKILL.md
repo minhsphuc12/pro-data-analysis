@@ -100,13 +100,15 @@ Default alias: `DWH` (Oracle datawarehouse)
 
 ## Folder Structure
 
+**Quy ước đặt tên theo task:** Mọi file hoặc thư mục tạo theo task-name **bắt buộc** dùng tiền tố ngày `{YYYY-MM-DD}_` để dễ sắp xếp và tìm (ví dụ: `2025-02-22_revenue-by-region/`, `2025-02-22_revenue-by-region-brief.md`).
+
 ```
 documents/      -> Excel metadata (DWH + source systems). Chuẩn khai thác:
   dwh-meta-tables.xlsx, dwh-meta-columns.xlsx  -> DWH (bảng/cột tích hợp)
   [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Từ điển từng hệ thống nguồn (source-a, source-b, ...)
   *glossary*.xlsx, *bg-*.xlsx (business glossary) -> Thuật ngữ, định nghĩa, cách tính, Bảng/Trường DWH, SQL tính toán (dùng trong Phase 1)
 queries/        -> Existing SQL queries (reference for patterns)
-queries/agent-written/  -> Output: queries written by this agent
+queries/agent-written/  -> Output: queries written by this agent (naming: {YYYY-MM-DD}_{task-name}.sql)
 references/     -> SQL and DWH reference guides
 scripts/        -> Python tools for database inspection and query testing
 single-table/   -> Knowledge base: one file per table. Naming: {source_db}_{schema}_{table}.md. Accumulate learnings across sessions.
@@ -122,6 +124,7 @@ multiple-tables/ -> Knowledge base: one file per set of joined tables. Naming: {
 - Incorporate user feedback / domain knowledge when provided at checkpoints
 - Re-present and re-confirm if user corrections are significant
 - Create task brief before data discovery (Phase 1)
+- Use date prefix **{YYYY-MM-DD}_** for any file or folder named with task-name (e.g. `{YYYY-MM-DD}_{task-name}/`, `{YYYY-MM-DD}_{task-name}-brief.md`) so outputs are easy to sort and find
 - In Phase 1, consult business glossary for key terms/KPIs to enrich the brief (definitions, calculation, DWH candidates) before Phase 2
 - Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2)
 - Document data mapping before writing query (Phase 3)

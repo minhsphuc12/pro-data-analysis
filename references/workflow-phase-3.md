@@ -1,6 +1,6 @@
 # Phase 3: Data Mapping & Documentation
 
-Create `{task-name}/{task-name}-data-mapping.md` in working directory documenting everything found:
+Create `{YYYY-MM-DD}_{task-name}/{YYYY-MM-DD}_{task-name}-data-mapping.md` in working directory (same dated task folder as Phase 1 brief), documenting everything found:
 
 ```markdown
 # Data Mapping: {task name}

@@ -3,7 +3,7 @@
 1. **Save query** to `queries/agent-written/{YYYY-MM-DD}_{task-name}.sql`
    - Include standard header comment (purpose, author, date, tables, performance notes)
 
-2. **Update data mapping** document with final results
+2. **Update data mapping** document (`{YYYY-MM-DD}_{task-name}/{YYYY-MM-DD}_{task-name}-data-mapping.md`) with final results
 
 3. **Report to user** with:
    - Final query

@@ -18,7 +18,7 @@ Before touching any data, clearly define the problem and **enrich it with busine
    - **DWH table/column, calculation SQL**: Suggested DWH table/column and SQL snippet — note these as candidates for Phase 2 (do not assume they are the only source; still run data discovery and confirm).
    - **Domain, Owning Unit**: Helps with scoping and identifying ownership.
    Enrich the task brief with these so the problem is stated in business language and Phase 2 discovery is more effective.
-7. **Save brief**: Create `{task-name}/{task-name}-brief.md` in the working directory with {task-name} in a clear, readable format, and have date first to easily sort and locate later.
+7. **Save brief**: Create folder `{YYYY-MM-DD}_{task-name}/` and file `{YYYY-MM-DD}_{task-name}-brief.md` inside it (e.g. `2025-02-22_revenue-by-region/2025-02-22_revenue-by-region-brief.md`). Always use date prefix **{YYYY-MM-DD}_** for task-name files and folders so they sort and navigate easily.
 
 ## Template for brief
 
