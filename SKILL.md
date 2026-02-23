@@ -603,6 +603,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - Wrap test execution with safety limits (Phase 5)
 - Save output query to `queries/agent-written/` with header comment (Phase 7)
 - When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/`, `multiple-tables/`, and optionally `knowledge/glossary/` for business terms/KPIs (one file per object or per term; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
+- When table/column lineage was traced and confirmed (Phase 2e), retain that lineage knowledge in `knowledge/single-table/` (one file per table; merge/append procedures/packages and ODI scenario context as above)
 - Handle NULLs explicitly in all comparisons
 - Apply partition pruning on partitioned tables
 - Use column comments to understand business meaning of data
