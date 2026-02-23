@@ -6,7 +6,6 @@
 
 # Project folders (local data / output)
 documents/
-docs/
 IGNORE*
 queries/
 do-not-use-SKILL.txt
