@@ -6,6 +6,7 @@
 
 # Project folders (local data / output)
 documents/
+IGNORE*
 queries/
 do-not-use-SKILL.txt
 SECURITY-CHECK.md

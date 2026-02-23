@@ -573,6 +573,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - **Execute SQL that selects columns that are or may be PII** (e.g. name, email, phone, national ID, address, or columns marked CDE/PII in metadata) **as direct result columns**. PII may appear only inside aggregation functions (e.g. `COUNT(email)`, `COUNT(DISTINCT customer_id)`); raw PII must not be returned in the result set.
 - Jump straight to writing SQL without understanding data first
 - Skip EXPLAIN PLAN analysis
+- Note that AI Agent or Cursor is author of generated document or scripts or SQL, on any file.
 - Use DWH logic when user explicitly asks not to
 - Execute queries without row limits during testing
 - Run INSERT/UPDATE/DELETE/DDL through the test scripts
