@@ -20,9 +20,7 @@ metadata:
 ---
 
 **Key differentiator**: You do NOT jump straight to writing SQL. Before executing a new task,
-**consult the knowledge folders** (`single-table/`, `multiple-tables/`) for accumulated data
-understanding from previous tasks — then understand the data landscape by searching documentation,
-database comments, and prior queries before designing any solution.
+**consult the knowledge folders** (`knowledge/`) for accumulated data understanding and business understanding from previous tasks — including **business terms** in `knowledge/glossary/` (one file per term: business insight, usage, data understanding) and table/join learnings in `single-table/` and `multiple-tables/` — then understand the data landscape by searching documentation, database comments, and prior queries before designing any solution.
 
 ## When to Use This Skill
 
@@ -97,7 +95,9 @@ Before touching any data, clearly define the problem and **enrich it with busine
    - **DWH table/column, calculation SQL**: Suggested DWH table/column and SQL snippet — note these as candidates for Phase 2 (do not assume they are the only source; still run data discovery and confirm).
    - **Domain, Owning Unit**: Helps with scoping and identifying ownership.
    Enrich the task brief with these so the problem is stated in business language and Phase 2 discovery is more effective.
-8. **Save brief**: Create folder `{task-folder}/` and file `{task-folder}-brief.md` inside it (e.g. `2025-02-22_revenue-by-region/2025-02-22_revenue-by-region-brief.md`). Always use date prefix **{YYYY-MM-DD}_** for task-related files and folders so they are naturally sorted and navigated easily.
+8. **Consult accumulated knowledge glossary**:  
+   For the same key terms and KPIs, check the **accumulated knowledge glossary** in `knowledge/glossary/`. There is **one file per term** (e.g. `{term-slug}.md`). Each file holds learned insight about that term: business context, usage in reports, how the data is understood in practice, gotchas, and references to tables/columns from past tasks. If a file exists for a term, **read it** and merge relevant points into the task brief so the brief benefits from prior sessions. This step runs after the formal business glossary so definitions stay aligned with standards while the brief is enriched with accumulated experience.
+9. **Save brief**: Create folder `{task-folder}/` and file `{task-folder}-brief.md` inside it (e.g. `2025-02-22_revenue-by-region/2025-02-22_revenue-by-region-brief.md`). Always use date prefix **{YYYY-MM-DD}_** for task-related files and folders so they are naturally sorted and navigated easily.
 
 **Template for brief:**
 
@@ -105,7 +105,7 @@ Before touching any data, clearly define the problem and **enrich it with busine
 # Task: {task name}
 ## Business Question
 {restate the question}
-## Glossary / Standard Definitions (from business glossary, if found)
+## Glossary / Standard Definitions (from business glossary and knowledge/glossary/, if found)
 - **{term 1}**: {Definition}. Calculation method: {Calculation method}. DWH: {Table/Field} (candidate for Phase 2).
 - ...
 ## Expected Output
@@ -453,6 +453,11 @@ Load optimization reference: `references/optimization.md`
 
    **Format inside each file** (Markdown): use clear headings (e.g. Purpose, Important columns, Join conditions, Data quality, Session notes) and append new session notes with a date and short task reference so the file remains one cumulative knowledge base per object.
 
+   - **Folder `knowledge/glossary/`**  
+     Use when the task involved **business terms or KPIs** that you now understand better (definition, calculation, usage, or how they map to tables/columns).  
+     **One term = one file.** File name: `{term-slug}.md` (e.g. `net-revenue.md`, `active-customer.md`).  
+     Content to capture: business insight, how the term is used in reports, data understanding (which tables/columns, filters, edge cases), and gotchas. If a file for that term already exists, **read it first**, then **merge/append** the new learnings with date and task context. Same security rules as above: no real data samples, PII, or confidential detail — only structure, semantics, and generic placeholders.
+
    **Security — knowledge base content:**  
    Do **NOT** write any of the following into output files (to avoid leaking sensitive company information, especially if these folders are ever committed or shared):
 
@@ -493,6 +498,7 @@ Load detailed guidance based on context:
 | Dialect Differences | `references/dialect-differences.md` | Oracle vs MySQL vs PostgreSQL specifics |
 | DWH Patterns | `references/dwh-patterns.md` | Star schema, SCD, ETL, fact/dimension patterns |
 | Knowledge folder (accumulated learnings) | `knowledge/single-table/`, `knowledge/multiple-tables/` | **Before executing a new task**: scan/load relevant files for tables and joins from past tasks to reuse context |
+| Accumulated glossary (business terms) | `knowledge/glossary/` | **Phase 1**: after consulting business glossary, load matching term files (one file per term) for business insight, usage, data understanding from past tasks |
 | Table/join knowledge | `knowledge/single-table/{db}_{schema}_{table}.md`, `knowledge/multiple-tables/{db}_{t1}_{t2}….md` | When a table or join is in scope, load the matching knowledge file if it exists for context |
 
 ## Scripts Reference
@@ -538,6 +544,7 @@ queries/        -> Existing SQL queries (reference for patterns)
 queries/agent-written/  -> Output: queries written by this agent (naming: {task-folder}.sql)
 references/     -> SQL and DWH reference guides
 scripts/        -> Python tools for database inspection and query testing
+knowledge/glossary/       -> Accumulated knowledge per **business term**: one file per term (e.g. {term-slug}.md). Content: business insight, usage in reports, data understanding, gotchas, and references to tables/columns from past tasks. **Consult in Phase 1** after the formal business glossary to enrich the brief with prior experience.
 knowledge/single-table/   -> Knowledge base: one file per table. Naming: {source_db}_{schema}_{table}.md. Accumulate learnings across sessions. **Consult at the start of a new task** for relevant tables.
 knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables. Naming: {source_db}_{table1}_{table2}[_{table3}…].md. Accumulate learnings across sessions. **Consult at the start of a new task** for relevant joins.
 ```
@@ -552,7 +559,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - Re-present and re-confirm if user corrections are significant
 - Create task brief before data discovery (Phase 1)
 - Use date prefix **{YYYY-MM-DD}_** for any file or folder named with task-name (e.g. `{YYYY-MM-DD}_{task-name}/`, `{YYYY-MM-DD}_{task-name}-brief.md`) so outputs are easy to sort and find
-- In Phase 1, consult business glossary for key terms/KPIs to enrich the brief (definitions, calculation, DWH candidates) before Phase 2
+- In Phase 1, consult business glossary for key terms/KPIs to enrich the brief (definitions, calculation, DWH candidates); then consult accumulated knowledge glossary (`knowledge/glossary/`: one file per term — business insight, usage, data understanding) and merge relevant points into the brief before Phase 2
 - **Before discover data**: Consult the knowledge folders (`single-table/`, `multiple-tables/`) for accumulated data understanding from previous tasks — check for files matching tables/joins relevant to the task and load them for context before Phase 2.
 - Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2); when tables or joins are in scope, load matching knowledge files from `single-table/` and `multiple-tables/` if they exist
 - Document data mapping before writing query (Phase 3)
@@ -560,7 +567,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - Run EXPLAIN PLAN before executing query (Phase 5)
 - Wrap test execution with safety limits (Phase 5)
 - Save output query to `queries/agent-written/` with header comment (Phase 7)
-- When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/` and/or `multiple-tables/` (one file per object; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
+- When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/`, `multiple-tables/`, and optionally `knowledge/glossary/` for business terms/KPIs (one file per object or per term; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
 - Handle NULLs explicitly in all comparisons
 - Apply partition pruning on partitioned tables
 - Use column comments to understand business meaning of data
