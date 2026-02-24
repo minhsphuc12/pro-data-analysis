@@ -1,5 +1,5 @@
 ---
-name: pro-data-analyst
+name: pro-data-analysis
 description: >
   Use for any data analytics task: answering business questions with SQL, finding relevant tables,
   understanding DWH schema, building reports/queries, optimizing query performance. Works with

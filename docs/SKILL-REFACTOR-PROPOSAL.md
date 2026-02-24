@@ -96,7 +96,7 @@ Mục tiêu: Giữ **SKILL.md** ngắn gọn (khoảng 150–200 dòng), dễ qu
 ## 3. Cấu trúc thư mục sau refactor
 
 ```
-pro-data-analyst/
+pro-data-analysis/
 ├── SKILL.md                    # Ngắn, compact: role, when-to-use, workflow tóm tắt, ref guide, constraints tóm tắt
 ├── references/
 │   ├── checkpoints.md          # (mới) Checkpoint & skip mode

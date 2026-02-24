@@ -1,1 +1,1 @@
-# Scripts package for pro-data-analyst
+# Scripts package for pro-data-analysis
