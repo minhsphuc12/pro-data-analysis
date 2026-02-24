@@ -30,7 +30,7 @@ metadata:
 - Building reports or analytical queries
 - Optimizing slow-running queries
 - Understanding DWH and sources database schema and data relationships
-- Tracing table/column lineage (where a table or column is used as input or output in packages/procedures, within DWH or back to source; combine `scripts/search_procedures.py` with ODI scenarios in `scenarios/`)
+- Tracing table/column lineage (where a table or column is used as input or output in packages/procedures, within DWH or back to source; iterate between `scripts/search_procedures.py` and ODI scenario files in `scenarios/` over multiple rounds to trace as far upstream/downstream as possible)
 - Any task involving SQL against enterprise databases
 
 ## Human-in-the-Loop Checkpoints
@@ -211,10 +211,19 @@ python @scripts/sample_data.py --schema SCHEMA --table TABLE_NAME --db DWH --pro
 
 **2e. Table/Column Lineage (when tracing lineage)**
 
-When the user needs to find **where a table or column is used as input or output** in packages/procedures, or to trace **lineage within DWH or back to source database**, combine both sources below in Phase 2.
+When the user needs to find **where a table or column is used as input or output** in packages/procedures, or to trace **lineage within DWH or back to source database**, combine both sources below and **iterate** so lineage can be traced as far upstream or downstream as possible.
 
 - **DWH procedures/packages (Oracle):** Use `scripts/search_procedures.py` with db alias **DWH_ADMIN** (not DWH) to find PROCEDURE, PACKAGE, PACKAGE BODY, or FUNCTION that reference a table name (or a text pattern) in source code. This shows which objects read from or write to the table.
-- **ODI scenarios:** The folder `scenarios/` contains **extracted Oracle Data Integrator (ODI) scenario information**. Use it to understand ETL flows, source-to-DWH mappings, and scenario-level lineage. When lineage is in scope, search or scan relevant files in `scenarios/` (e.g. by table name, interface name, or scenario name) and combine with procedure search results to build a complete picture (DWH code + ODI flows).
+- **ODI scenarios:** The folder `scenarios/` contains **extracted Oracle Data Integrator (ODI) scenario information**. Use it to understand ETL flows, source-to-DWH mappings, and scenario-level lineage. Search or scan files in `scenarios/` by table name, interface name, or scenario name.
+
+**Iterative lineage expansion (do not stop after one round):** To trace lineage as far as possible, **alternate** between reading scenario files and searching procedures over **multiple rounds** until no new references appear or a reasonable limit (e.g. 5–10 rounds) is reached.
+
+1. **Start:** From the task (or checkpoint), collect initial table names, interface names, or scenario names to trace.
+2. **Round N (repeat until no new names or limit reached):**
+   - **Search procedures:** Run `search_procedures.py` for the current set of table/object names. From the results, note any **new** table names, package names, or procedure names that appear as inputs/outputs.
+   - **Read scenario files:** In `scenarios/`, search or open files that mention the current tables/interfaces/scenarios. From file content, extract any **new** table names, interface names, scenario names, or source mappings.
+   - **Merge:** Add newly discovered names to the working set (avoid duplicates). If the working set grew, continue to the next round; otherwise stop.
+3. **Document:** Merge all rounds into one lineage view: upstream sources, downstream consumers, procedures/packages, and ODI scenario/mapping context.
 
 ```bash
 # Find procedures/packages that reference a table (input/output usage)
@@ -227,11 +236,11 @@ python @scripts/search_procedures.py --text "INSERT INTO" --table DIM_CUSTOMER -
 # Fetch full source of a known object
 python @scripts/search_procedures.py --name ADMIN_SCHEMA.PKG_TABLE_LOAD --db DWH_ADMIN
 
-# Multiple table name patterns (regex)
+# Multiple table name patterns (regex) — use for each new batch of table names found in previous round
 python @scripts/search_procedures.py --table "FACT_|DIM_" --regex --db DWH_ADMIN --limit 50
 ```
 
-Then **consult the `scenarios/` folder**: look for files or content that mention the same table(s), interfaces, or mappings. Merge findings with procedure results to document upstream sources, downstream consumers, and ETL steps. If the task brief or user asks for "lineage", "where is this table used", "source of this column", or "back to source", **always run 2e** (search_procedures + scenarios) as part of Phase 2.
+After each procedure search, **consult `scenarios/`** for the tables/interfaces just found; after each scenario read, **run search_procedures** for any new table or object names found in the scenario files. If the task brief or user asks for "lineage", "where is this table used", "source of this column", or "back to source", **always run 2e** and **apply the iterative expansion** above as part of Phase 2.
 
 **[CHECKPOINT 2] — Confirm Table & Column Selection**
 
@@ -545,7 +554,7 @@ Load detailed guidance based on context:
 | `@scripts/run_query_safe.py` | Execute with safety limits | `python @scripts/run_query_safe.py --db DWH --file q.sql` |
 | `@scripts/find_relationships.py` | Find FK / join paths | `python @scripts/find_relationships.py -s SCHEMA -t TABLE` |
 | `@scripts/sample_data.py` | Sample data + profiling | `python @scripts/sample_data.py -s SCHEMA -t TABLE --profile` |
-| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output | Prefer **--db DWH_ADMIN** (not DWH). Example: `python @scripts/search_procedures.py --table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` |
+| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output. For lineage, use in **multiple rounds** with `scenarios/` (see Phase 2e). | Prefer **--db DWH_ADMIN**. `--table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` — repeat for new table names from each round. |
 
 ## Database Connections
 
@@ -577,7 +586,7 @@ documents/      -> Excel metadata (DWH + source systems). Usage standard:
   dwh-meta-tables.xlsx, dwh-meta-columns.xlsx  -> DWH (integrated tables/columns)
   [source]-meta-tables.xlsx, [source]-meta-columns.xlsx -> Individual source system dictionary (source-a, source-b, ...)
   *glossary*.xlsx, *bg-*.xlsx (business glossary) -> Terms, definitions, calculation method, DWH Table/Field, Calculation SQL (used in Phase 1)
-scenarios/      -> Extracted Oracle Data Integrator (ODI) scenario information. Use in Phase 2 when tracing table/column lineage within DWH or back to source (combine with search_procedures.py).
+scenarios/      -> Extracted Oracle Data Integrator (ODI) scenario information. Use in Phase 2e when tracing lineage: alternate reading/scaning scenarios/ with search_procedures.py over multiple rounds to trace upstream/downstream as far as possible.
 queries/        -> Existing SQL queries (reference for patterns)
 queries/agent-written/  -> Output: queries written by this agent (naming: {task-folder}.sql)
 references/     -> SQL and DWH reference guides
@@ -600,7 +609,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - In Phase 1, consult business glossary for key terms/KPIs to enrich the brief (definitions, calculation, DWH candidates); then consult accumulated knowledge glossary (`knowledge/glossary/`: one file per term — business insight, usage, data understanding) and merge relevant points into the brief before Phase 2
 - **Before discover data**: Consult the knowledge folders (`single-table/`, `multiple-tables/`) for accumulated data understanding from previous tasks — check for files matching tables/joins relevant to the task and load them for context before Phase 2.
 - Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2); when tables or joins are in scope, load matching knowledge files from `single-table/` and `multiple-tables/` if they exist.
-- **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, combine `scripts/search_procedures.py` with **--db DWH_ADMIN** (find procedures/packages referencing the table) with information in folder `scenarios/` (ODI extracted scenarios) to build a complete lineage view.
+- **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, run **iterative lineage expansion** (Phase 2e): alternate multiple rounds of `scripts/search_procedures.py` (--db DWH_ADMIN) and reading/scaning `scenarios/` (ODI extracted scenarios), using each round’s new table/interface/object names as input to the next, until no new references are found or a reasonable round limit is reached, then build one complete lineage view.
 - Document data mapping before writing query (Phase 3)
 - Write CTEs with inline comments explaining reasoning (Phase 4)
 - Run EXPLAIN PLAN before executing query (Phase 5)
