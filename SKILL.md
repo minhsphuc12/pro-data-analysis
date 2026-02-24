@@ -30,7 +30,7 @@ metadata:
 - Building reports or analytical queries
 - Optimizing slow-running queries
 - Understanding DWH and sources database schema and data relationships
-- Tracing table/column lineage (where a table or column is used as input or output in packages/procedures, within DWH or back to source; combine `search_procedures.py` with ODI scenarios in `scenarios/`)
+- Tracing table/column lineage (where a table or column is used as input or output in packages/procedures, within DWH or back to source; combine `scripts/search_procedures.py` with ODI scenarios in `scenarios/`)
 - Any task involving SQL against enterprise databases
 
 ## Human-in-the-Loop Checkpoints
@@ -213,7 +213,7 @@ python @scripts/sample_data.py --schema SCHEMA --table TABLE_NAME --db DWH --pro
 
 When the user needs to find **where a table or column is used as input or output** in packages/procedures, or to trace **lineage within DWH or back to source database**, combine both sources below in Phase 2.
 
-- **DWH procedures/packages (Oracle):** Use `search_procedures.py` to find PROCEDURE, PACKAGE, PACKAGE BODY, or FUNCTION that reference a table name (or a text pattern) in source code. This shows which objects read from or write to the table.
+- **DWH procedures/packages (Oracle):** Use `scripts/search_procedures.py` with db alias **DWH_ADMIN** (not DWH) to find PROCEDURE, PACKAGE, PACKAGE BODY, or FUNCTION that reference a table name (or a text pattern) in source code. This shows which objects read from or write to the table.
 - **ODI scenarios:** The folder `scenarios/` contains **extracted Oracle Data Integrator (ODI) scenario information**. Use it to understand ETL flows, source-to-DWH mappings, and scenario-level lineage. When lineage is in scope, search or scan relevant files in `scenarios/` (e.g. by table name, interface name, or scenario name) and combine with procedure search results to build a complete picture (DWH code + ODI flows).
 
 ```bash
@@ -545,9 +545,13 @@ Load detailed guidance based on context:
 | `@scripts/run_query_safe.py` | Execute with safety limits | `python @scripts/run_query_safe.py --db DWH --file q.sql` |
 | `@scripts/find_relationships.py` | Find FK / join paths | `python @scripts/find_relationships.py -s SCHEMA -t TABLE` |
 | `@scripts/sample_data.py` | Sample data + profiling | `python @scripts/sample_data.py -s SCHEMA -t TABLE --profile` |
-| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output | `python @scripts/search_procedures.py --table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` |
+| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output | Prefer **--db DWH_ADMIN** (not DWH). Example: `python @scripts/search_procedures.py --table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` |
 
 ## Database Connections
+
+**Alias usage (prefer by purpose):**
+- **DWH_ADMIN** — Use **only** for **procedure/package/function search and lineage**: finding PROCEDURE, PACKAGE, PACKAGE BODY, FUNCTION that reference tables or text. Prefer DWH_ADMIN over DWH when searching for code objects.
+- **DWH** — Use for **data extraction and analytics**: schema search, table inspection, sampling, relationships, EXPLAIN PLAN , and query execution.
 
 Connections configured via environment variables:
 ```
@@ -596,7 +600,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - In Phase 1, consult business glossary for key terms/KPIs to enrich the brief (definitions, calculation, DWH candidates); then consult accumulated knowledge glossary (`knowledge/glossary/`: one file per term — business insight, usage, data understanding) and merge relevant points into the brief before Phase 2
 - **Before discover data**: Consult the knowledge folders (`single-table/`, `multiple-tables/`) for accumulated data understanding from previous tasks — check for files matching tables/joins relevant to the task and load them for context before Phase 2.
 - Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2); when tables or joins are in scope, load matching knowledge files from `single-table/` and `multiple-tables/` if they exist.
-- **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, combine `scripts/search_procedures.py` (find procedures/packages referencing the table) with information in folder `scenarios/` (ODI extracted scenarios) to build a complete lineage view.
+- **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, combine `scripts/search_procedures.py` with **--db DWH_ADMIN** (find procedures/packages referencing the table) with information in folder `scenarios/` (ODI extracted scenarios) to build a complete lineage view.
 - Document data mapping before writing query (Phase 3)
 - Write CTEs with inline comments explaining reasoning (Phase 4)
 - Run EXPLAIN PLAN before executing query (Phase 5)
@@ -607,6 +611,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - Handle NULLs explicitly in all comparisons
 - Apply partition pruning on partitioned tables
 - Use column comments to understand business meaning of data
+- **Database alias**: Use **DWH_ADMIN** only for procedure/package/function search (`scripts/search_procedures.py`); use **DWH** only for data extraction and analytics (search_schema, check_table, sample_data, find_relationships, explain_query, run_query_safe).
 - **PII in queries**: Before executing any SQL, ensure no column that is or may be PII (e.g. name, email, phone, ID number, address; or columns marked CDE/PII in metadata) appears in the SELECT list as a direct column. If analytics need PII, use only aggregations (e.g. `COUNT(*)`, `COUNT(DISTINCT col)`).
 
 ### MUST NOT DO
@@ -616,6 +621,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - **Execute SQL that selects columns that are or may be PII** (e.g. name, email, phone, national ID, address, or columns marked CDE/PII in metadata) **as direct result columns**. PII may appear only inside aggregation functions (e.g. `COUNT(email)`, `COUNT(DISTINCT customer_id)`); raw PII must not be returned in the result set.
 - Jump straight to writing SQL without understanding data first
 - Skip EXPLAIN PLAN analysis
+- Use **DWH_ADMIN** for something else than procedure/package/function search (`scripts/search_procedures.py`)
 - Note that AI Agent or Cursor is author of generated document or scripts or SQL, on any file.
 - Use DWH logic when user explicitly asks not to
 - Execute queries without row limits during testing
