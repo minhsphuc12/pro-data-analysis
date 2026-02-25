@@ -60,6 +60,22 @@ Checkpoints can be skipped when the user explicitly opts out. Look for signals l
 - If user provides additional domain knowledge, capture it in the task brief / data mapping
 - Checkpoints are labeled **[CHECKPOINT N]** — there are 4 total
 
+### Subagent usage (optional)
+
+Some steps can be **delegated to a subagent** (e.g. via `mcp_task`) so the main agent keeps a lighter context. Use only when the user asks for it or when the step is heavy and self-contained.
+
+**When to delegate:**
+- **Phase 2a–2c** (search docs, schema, prior queries): subagent returns a table/column summary. Use `explore` or `generalPurpose`.
+- **Phase 2d** (deep inspection: check_table, sample_data, find_relationships): optional; subagent returns structure + sample.
+- **Phase 2e** (lineage: search_procedures + scenarios, multiple rounds): subagent returns lineage summary. Use `generalPurpose`.
+- **Phase 5** (EXPLAIN + run_query_safe): subagent returns plan summary + sample rows. Use `shell` or `generalPurpose`.
+
+**User triggers:** e.g. "run discovery in subagent", "lineage via subagent", "EXPLAIN and test in subagent", or "skip checkpoints and use subagent for Phase 2/5".
+
+**Contract:** Subagent receives task brief (or excerpt), keyword/schema/table, db alias, and paths to scripts/documents/scenarios. It returns a markdown file or summary (tables/columns, lineage, or EXPLAIN + sample). The main agent reads that result and continues with the next phase or checkpoint; all checkpoints remain with the main agent.
+
+**References:** The subagent runs in isolated context, so the prompt must be self-contained (include script paths and db alias).
+
 ## 7-Phase Workflow
 
 **It is mandatory to execute all 7 phases in the correct order. Do not skip any phase.**
@@ -70,7 +86,7 @@ Checkpoints can be skipped when the user explicitly opts out. Look for signals l
 | 2 | Data discovery — docs, schema, prior queries, deep inspection | [Phase 2](#phase-2-data-discovery) (see below) |
 | 3 | Data mapping & documentation | [Phase 3](#phase-3-data-mapping--documentation) (see below) |
 | 4 | Query design & reasoning (CTEs, PII, template) | [Phase 4](#phase-4-query-design--reasoning) (see below) |
-| 5 | Query testing — EXPLAIN PLAN, safe execution | [Phase 5](#phase-5-query-testing-unit-tests) (see below) |
+| 5 | Query testing — EXPLAIN PLAN, safe execution, CTE isolation when abnormal | [Phase 5](#phase-5-query-testing-unit-tests) (see below) |
 | 6 | Optimization (partition, index, hints) | [Phase 6](#phase-6-optimization) (see below) |
 | 7 | Save & document — query, report, knowledge distillation, security | [Phase 7](#phase-7-save--document) (see below) |
 
@@ -418,7 +434,7 @@ Key decisions made:
 
 ### Phase 5: Query Testing (Unit Tests)
 
-Test in two stages:
+Test in stages (5a, 5b; use 5c when results are abnormal):
 
 **5a. EXPLAIN PLAN (always first)**
 
@@ -451,6 +467,18 @@ python @scripts/run_query_safe.py --db DWH --file query.sql --count-only
 ```
 
 If issues found, iterate back to Phase 4.
+
+**5c. Debugging abnormal results (CTE isolation)**
+
+When the query returns **abnormal results** (0 rows, important columns all NULL, or runs too long), isolate the cause by running CTEs step by step. **Use a subagent** to perform the verification: pass the query file, DB alias, and which scenario (empty/null vs. slow); the subagent runs the isolation steps and reports which CTE is at fault.
+
+- **Empty result or important columns all NULL**  
+  **Bottom-up:** Remove or bypass the **last** CTE layer first (the one feeding the final SELECT). Run the shortened query; if rows or non-null values appear, the removed CTE (or the step that feeds it) is the likely cause. Repeat by removing the next-to-last CTE, and so on, until the problem disappears — the last change that fixed it pinpoints the faulty CTE or join/filter.
+
+- **Query runs too long (timeout or very slow)**  
+  **Top-down:** Run from the **first** CTE downward. Execute `SELECT * FROM first_cte WHERE ROWNUM <= N` (or equivalent `LIMIT N`) and note the time; then add the second CTE, then the third, etc. The first step that becomes slow identifies the bottleneck (table scan, missing partition pruning, or heavy join).
+
+After the subagent reports the offending CTE or step, fix the query (or data mapping) and re-run 5a/5b. If issues persist, iterate back to Phase 4 with the new finding.
 
 ### Phase 6: Optimization
 
@@ -614,6 +642,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - Write CTEs with inline comments explaining reasoning (Phase 4)
 - Run EXPLAIN PLAN before executing query (Phase 5)
 - Wrap test execution with safety limits (Phase 5)
+- When query results are abnormal (0 rows, important columns all NULL, or timeout/very slow): use Phase 5c CTE isolation (bottom-up for empty/NULL, top-down for slow) and **use a subagent** to run the isolation steps and report the faulty CTE
 - Save output query to `queries/agent-written/` with header comment (Phase 7)
 - When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/`, `multiple-tables/`, and optionally `knowledge/glossary/` for business terms/KPIs (one file per object or per term; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
 - When table/column lineage was traced and confirmed (Phase 2e), retain that lineage knowledge in `knowledge/single-table/` (one file per table; merge/append procedures/packages and ODI scenario context as above)

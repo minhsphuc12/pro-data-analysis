@@ -6,7 +6,9 @@
 
 # Project folders (local data / output)
 documents/
+documents
 scenarios/
+scenarios
 IGNORE*
 queries/
 do-not-use-SKILL.txt
