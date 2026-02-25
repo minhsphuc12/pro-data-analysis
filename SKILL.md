@@ -514,11 +514,12 @@ Load optimization reference: `references/optimization.md`
      Example: `DWH_DWH_FACT_SALES.md`, `SOURCE_A_SOURCE_A_ACCOUNTS.md`.
 
    - **Folder `knowledge/multiple-tables/`**  
-     Use when the task required **joining two or more tables**.  
-     Content to capture: how and why these tables are connected, join keys and conditions, usage and purpose of the combination, correct interpretation of the result set, typical filters, and gotchas (e.g. duplicates, nulls on join keys).  
-     **File name**: `{source_db}_{table1}_{table2}[_{table3}…].md`  
+     Use when the task required **joining exactly two tables**.  
+     Content to capture: how and why these two tables are connected, join keys and conditions, usage and purpose of the combination, correct interpretation of the result set, typical filters, and gotchas (e.g. duplicates, nulls on join keys).  
+     **File name**: `{source_db}_{table1}_{table2}.md`  
      - Use the same `source_db` for the object; list tables in a consistent order (e.g. fact first, then dimensions).  
-     Example: `DWH_FACT_SALES_DIM_CUSTOMER.md`, `DWH_FACT_SALES_DIM_CUSTOMER_DIM_PRODUCT.md`.
+     Example: `DWH_FACT_SALES_DIM_CUSTOMER.md`.
+
 
    **Format inside each file** (Markdown): use clear headings (e.g. Purpose, Important columns, Join conditions, Data quality, Session notes) and append new session notes with a date and short task reference so the file remains one cumulative knowledge base per object.
 
