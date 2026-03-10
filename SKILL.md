@@ -225,6 +225,20 @@ python @scripts/find_relationships.py --schema SCHEMA --tables TABLE1,TABLE2 --d
 python @scripts/sample_data.py --schema SCHEMA --table TABLE_NAME --db DWH --profile
 ```
 
+**Lấy mẫu từ vùng dữ liệu có nghĩa:** Khi cần hiểu **nội dung** bảng (không chỉ cấu trúc), ưu tiên lấy mẫu từ vùng có dữ liệu thực tế. `sample_data.py` mặc định lấy N dòng đầu tiên không có ORDER BY, dễ rơi vào vùng cũ hoặc toàn NULL. Thay vì chỉ dựa vào sample mặc định: (1) Nếu có cột ngày/cập nhật, chạy query nhỏ qua `run_query_safe.py` dạng `SELECT * FROM schema.table ORDER BY <date_col> DESC` giới hạn vài dòng; (2) Nếu nghi ngờ key quan trọng bị NULL nhiều, thử query có `WHERE <key_col> IS NOT NULL ... LIMIT n`. Luôn dùng limit nhỏ và timeout ngắn khi chạy các query mẫu này.
+
+**2d'. Verify joins with mini-queries (bắt buộc khi dùng relationship)**
+
+Sau khi chạy `find_relationships` / `find_join_between`, **không** coi join là đã xác nhận chỉ dựa vào FK hoặc naming hint. Với **mỗi** candidate join (FK hoặc naming hint) sẽ dùng trong data mapping, agent **phải**:
+
+1. **Viết mini-query** chỉ kiểm tra join: `SELECT ... FROM schema.t1 JOIN schema.t2 ON <điều kiện>`, lấy vài dòng.
+2. **Chạy qua** `run_query_safe.py` với **limit rất nhỏ** (5–10 dòng) và **timeout ngắn** (10–15 giây) để không ảnh hưởng DB:
+   ```bash
+   python @scripts/run_query_safe.py --db DWH --sql "SELECT ... FROM schema.t1 JOIN schema.t2 ON ..." --limit 5 --timeout 15
+   ```
+3. **Cú pháp giới hạn theo DB:** Oracle: `FETCH FIRST n ROWS ONLY` hoặc subquery với `ROWNUM <= n`; MySQL/PostgreSQL: `LIMIT n`.
+4. **Nếu mini-query trả về 0 row:** Ghi chú join đó "chưa verify được có dữ liệu"; không coi là đã xác nhận cho đến khi có thêm bước (mở rộng filter, kiểm tra bảng khác, hoặc user xác nhận).
+
 **2e. Table/Column Lineage (when tracing lineage)**
 
 When the user needs to find **where a table or column is used as input or output** in packages/procedures, or to trace **lineage within DWH or back to source database**, combine both sources below and **iterate** so lineage can be traced as far upstream or downstream as possible.
@@ -368,6 +382,7 @@ Write the query following these principles:
 - Reference specific findings from Phase 3
 - Apply **early filtering** (especially partition keys)
 - Handle **NULLs** explicitly
+- **Vùng dữ liệu có nghĩa:** Khi viết query, chủ động nghĩ cách lấy dữ liệu non-null hoặc gần đây: dùng cột ngày/cập nhật trong WHERE hoặc ORDER BY, hoặc filter `key IS NOT NULL` khi phù hợp, để tránh query vào vùng dữ liệu quá xa/cũ dễ không có dữ liệu hoặc toàn NULL.
 - Use **set-based operations** (never cursors)
 - **PII**: Do **not** put columns that are or may be personally identifiable information (PII) in the SELECT list as direct output columns. If PII is needed for analytics, use only **aggregation functions** (e.g. `COUNT(*)`, `COUNT(DISTINCT col)`, `MIN`/`MAX` for grouping). Use DWH/source metadata (e.g. CDE/PII in `dwh-meta-columns.xlsx`) to identify PII columns.
 
@@ -455,11 +470,19 @@ Check for:
 python @scripts/run_query_safe.py --db DWH --file query.sql --limit 100 --timeout 30
 ```
 
-Verify:
+**Result verification (sau khi chạy query)**
+
+Verify cơ bản:
 - [ ] Results make business sense (spot-check values)
 - [ ] Column names and types are correct
 - [ ] No unexpected NULLs
 - [ ] Row count is in expected range
+
+**3.1. Kết quả chủ yếu chỉ có ID:** Nếu output chủ yếu là ID (không có tên, mô tả, mã hiển thị): agent phải xác định bảng/trường "mô tả" tương ứng (dimension, lookup, bảng master), viết query (hoặc bước kiểm tra) join thêm bảng/trường đó để đảm bảo kết quả có ý nghĩa; nếu không join được thì ghi chú và báo user (có thể thiếu bảng trong data mapping hoặc join key sai).
+- [ ] Nếu output chỉ có ID, đã xác định bảng/trường mô tả và join kiểm tra (hoặc ghi rõ lý do không join được).
+
+**3.2. Cột toàn NULL:** Nếu một cột trong kết quả **toàn bộ là NULL**, coi là có vấn đề. Hai hướng bắt buộc cân nhắc: (1) **Sai trường** — cột đó không phải trường cần dùng; kiểm tra lại data mapping và sửa query (bỏ cột hoặc thay bằng cột đúng). (2) **Đúng trường nhưng vùng dữ liệu không hợp lý** — filter/partition khiến vùng trả về không có giá trị; thử thu hẹp scope (dữ liệu gần đây hơn, non-null trên key) hoặc dùng CTE isolation (Phase 5c) để tìm bước gây ra.
+- [ ] Mỗi cột toàn NULL đã được kiểm tra: sai trường hay đúng trường nhưng filter/region sai; đã sửa query hoặc ghi chú trong data mapping.
 
 ```bash
 # Check total row count
@@ -646,8 +669,10 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, run **iterative lineage expansion** (Phase 2e): alternate multiple rounds of `scripts/search_procedures.py` (--db DWH_ADMIN) and reading/scaning `scenarios/` (ODI extracted scenarios), using each round’s new table/interface/object names as input to the next, until no new references are found or a reasonable round limit is reached, then build one complete lineage view.
 - Document data mapping before writing query (Phase 3)
 - Write CTEs with inline comments explaining reasoning (Phase 4)
+- When using relationships from find_relationships/find_join_between: for each candidate join used in data mapping, run a mini-query via run_query_safe (small limit, short timeout) to verify the join returns data; if 0 rows, note "chưa verify được có dữ liệu" and do not treat as confirmed (Phase 2d')
 - Run EXPLAIN PLAN before executing query (Phase 5)
 - Wrap test execution with safety limits (Phase 5)
+- After safe execution (Phase 5b): if output is mostly IDs, identify descriptive table/column and join to verify meaning (or document why not); if any column is all NULL, determine wrong field vs wrong data region and fix or document
 - When query results are abnormal (0 rows, important columns all NULL, or timeout/very slow): use Phase 5c CTE isolation (bottom-up for empty/NULL, top-down for slow) and **use a subagent** to run the isolation steps and report the faulty CTE
 - Save output query to `queries/agent-written/` with header comment (Phase 7)
 - When the job finishes successfully, distill session learnings into knowledge-base files in `single-table/`, `multiple-tables/`, and optionally `knowledge/glossary/` for business terms/KPIs (one file per object or per term; if file exists, read then merge/append with date and task context); never include real data samples, PII, internal identifiers, or confidential business data in those files (see Phase 7 Security — knowledge base content)
