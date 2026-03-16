@@ -234,6 +234,70 @@ def _pg_find_naming_hints(cursor, schema: str, table_name: str) -> list[dict]:
 
 
 # ============================================================================
+# SQL Server
+# ============================================================================
+
+def _sqlserver_find_fk(cursor, schema: str, table_name: str) -> list[dict]:
+    """Find FK relationships involving the given table (both directions)."""
+    results: list[dict] = []
+
+    cursor.execute(
+        """
+        SELECT
+            fk.name AS constraint_name,
+            s_from.name AS from_schema,
+            t_from.name AS from_table,
+            c_from.name AS from_column,
+            s_to.name AS to_schema,
+            t_to.name AS to_table,
+            c_to.name AS to_column
+        FROM sys.foreign_keys fk
+        JOIN sys.foreign_key_columns fkc
+            ON fkc.constraint_object_id = fk.object_id
+        JOIN sys.tables t_from
+            ON t_from.object_id = fk.parent_object_id
+        JOIN sys.schemas s_from
+            ON s_from.schema_id = t_from.schema_id
+        JOIN sys.columns c_from
+            ON c_from.object_id = t_from.object_id AND c_from.column_id = fkc.parent_column_id
+        JOIN sys.tables t_to
+            ON t_to.object_id = fk.referenced_object_id
+        JOIN sys.schemas s_to
+            ON s_to.schema_id = t_to.schema_id
+        JOIN sys.columns c_to
+            ON c_to.object_id = t_to.object_id AND c_to.column_id = fkc.referenced_column_id
+        WHERE (s_from.name = ? AND t_from.name = ?)
+           OR (s_to.name = ? AND t_to.name = ?)
+        ORDER BY fk.name, fkc.constraint_column_id
+        """,
+        (schema, table_name, schema, table_name),
+    )
+
+    for r in cursor.fetchall():
+        constraint_name, from_schema, from_table, from_column, to_schema, to_table, to_column = r
+        direction = "OUTGOING" if (from_schema == schema and from_table == table_name) else "INCOMING"
+        results.append(
+            {
+                "constraint_name": constraint_name,
+                "direction": direction,
+                "from_schema": from_schema,
+                "from_table": from_table,
+                "from_column": from_column,
+                "to_schema": to_schema,
+                "to_table": to_table,
+                "to_column": to_column,
+            }
+        )
+
+    return results
+
+
+def _sqlserver_find_naming_hints(cursor, schema: str, table_name: str) -> list[dict]:
+    # Keep it simple for now; join paths can still be inferred via _find_join_path.
+    return []
+
+
+# ============================================================================
 # Find join path between two tables
 # ============================================================================
 
@@ -262,6 +326,16 @@ def _find_join_path(cursor, schema: str, table1: str, table2: str, db_type: str)
               AND a.attnum > 0 AND NOT a.attisdropped
             ORDER BY c.relname, a.attnum
         """, (schema, table1, table2))
+    elif db_type == "sqlserver":
+        cursor.execute(
+            """
+            SELECT TABLE_NAME, COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (?, ?)
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+            """,
+            (schema, table1, table2),
+        )
 
     cols = {}
     for r in cursor.fetchall():
@@ -316,6 +390,7 @@ _FK_FUNCS = {
     "oracle": (_oracle_find_fk, _oracle_find_naming_hints),
     "mysql": (_mysql_find_fk, _mysql_find_naming_hints),
     "postgresql": (_pg_find_fk, _pg_find_naming_hints),
+    "sqlserver": (_sqlserver_find_fk, _sqlserver_find_naming_hints),
 }
 
 

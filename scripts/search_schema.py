@@ -265,7 +265,10 @@ def _sqlserver_search(cursor, keyword: str, schema: str | None,
         params.append(schema)
 
     sql += " ORDER BY s.name, t.name, c.column_id"
-    cursor.execute(sql, params or None)
+    if params:
+        cursor.execute(sql, params)
+    else:
+        cursor.execute(sql)
 
     count = 0
     for r in cursor:
