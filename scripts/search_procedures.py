@@ -11,6 +11,7 @@ Usage:
     python search_procedures.py --text "INSERT INTO"
     python search_procedures.py --table FACT_ORDER --schema APP_OWNER
     python search_procedures.py --text "COMMIT" --type PACKAGE BODY --format json
+    python search_procedures.py --name DWHPROD.PKG_X --format sql > pkg_x.sql
     python search_procedures.py --table CUST --regex --limit 50
     python search_procedures.py --table X --show-query   # print SQL to stderr to debug no results
     python search_procedures.py --name DWHPROD.PKG_DIM_CUSTOMER   # fetch by object name
@@ -386,6 +387,33 @@ def format_markdown(results: list[dict]) -> str:
     return "\n".join(out)
 
 
+def format_sql(results: list[dict]) -> str:
+    """
+    Plain .sql-style output: SQL line comments as headers, then ALL_SOURCE lines as-is.
+    Suitable for redirect to a file (e.g. --format sql > out.sql).
+    """
+    if not results:
+        return "-- No matching procedure/package found.\n"
+
+    sep = "-- " + ("-" * 76) + "\n"
+    blocks: list[str] = [f"-- search_procedures: {len(results)} object(s)\n", "\n"]
+    for r in results:
+        qual = f"{r['schema']}.{r['name']}"
+        blocks.append(sep)
+        blocks.append(f"-- Object: {qual} ({r['type']})\n")
+        if r.get("match_count", 0) > 0:
+            blocks.append(
+                f"-- {r['match_count']} line(s) in source reference search term\n"
+            )
+        blocks.append(sep)
+        source = "\n".join(ln["text"] for ln in r["lines"])
+        blocks.append(source)
+        if source and not source.endswith("\n"):
+            blocks.append("\n")
+        blocks.append("\n")
+    return "".join(blocks).rstrip() + "\n"
+
+
 # ============================================================================
 # CLI
 # ============================================================================
@@ -409,8 +437,12 @@ if __name__ == "__main__":
                         help="Max lines of full source per object; 0 = no limit (default: 0)")
     parser.add_argument("--show-query", action="store_true",
                         help="Print the SQL and bind parameters to stderr (to debug no results)")
-    parser.add_argument("--format", choices=["text", "json", "markdown"], default="text",
-                        help="Output format")
+    parser.add_argument(
+        "--format",
+        choices=["text", "json", "markdown", "sql"],
+        default="text",
+        help="Output format (sql: commented headers + source, for .sql files)",
+    )
     args = parser.parse_args()
 
     if not args.table and not args.text_content and not args.object_name:
@@ -435,6 +467,8 @@ if __name__ == "__main__":
             print(format_json(results))
         elif args.format == "markdown":
             print(format_markdown(results))
+        elif args.format == "sql":
+            print(format_sql(results), end="")
         else:
             print(format_text(results))
     except ValueError as e:

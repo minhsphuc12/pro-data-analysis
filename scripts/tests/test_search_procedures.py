@@ -1,7 +1,7 @@
 """
 Unit tests for search_procedures.py.
 Test pure helpers (_match, _oracle_build_text_filter, _to_oracle_literal, _executable_sql),
-formatters (format_text, format_json, format_markdown), and search_procedures with mocked DB.
+formatters (format_text, format_json, format_markdown, format_sql), and search_procedures with mocked DB.
 """
 import io
 import json
@@ -160,6 +160,44 @@ class TestFormatMarkdown:
         out = sp.format_markdown(results)
         assert "```" in out
         assert "code" in out
+
+
+class TestFormatSql:
+    """[Test] format_sql output."""
+
+    def test_empty_results(self):
+        assert sp.format_sql([]) == "-- No matching procedure/package found.\n"
+
+    def test_includes_object_header_and_source(self):
+        results = [
+            {
+                "schema": "S",
+                "name": "P",
+                "type": "PROCEDURE",
+                "lines": [{"line": 1, "text": "BEGIN NULL;"}, {"line": 2, "text": "END;"}],
+                "match_count": 0,
+                "matching_line_numbers": [],
+            }
+        ]
+        out = sp.format_sql(results)
+        assert "1 object(s)" in out
+        assert "-- Object: S.P (PROCEDURE)" in out
+        assert "BEGIN NULL;" in out and "END;" in out
+        assert out.endswith("\n")
+
+    def test_match_count_comment(self):
+        results = [
+            {
+                "schema": "S",
+                "name": "P",
+                "type": "PACKAGE",
+                "lines": [{"line": 1, "text": "x"}],
+                "match_count": 2,
+                "matching_line_numbers": [1, 3],
+            }
+        ]
+        out = sp.format_sql(results)
+        assert "2 line(s) in source reference search term" in out
 
 
 # =============================================================================
