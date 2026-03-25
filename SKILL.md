@@ -268,6 +268,9 @@ python @scripts/search_procedures.py --name ADMIN_SCHEMA.PKG_TABLE_LOAD --db DWH
 
 # Multiple table name patterns (regex) — use for each new batch of table names found in previous round
 python @scripts/search_procedures.py --table "FACT_|DIM_" --regex --db DWH_ADMIN --limit 50
+
+# Export results as a .sql text file (comment headers + ALL_SOURCE text)
+python @scripts/search_procedures.py --name ADMIN_SCHEMA.PKG_TABLE_LOAD --db DWH_ADMIN --format sql > pkg_table_load.sql
 ```
 
 After each procedure search, **consult `scenarios/`** for the tables/interfaces just found; after each scenario read, **run search_procedures** for any new table or object names found in the scenario files. If the task brief or user asks for "lineage", "where is this table used", "source of this column", or "back to source", **always run 2e** and **apply the iterative expansion** above as part of Phase 2.
@@ -610,7 +613,8 @@ Load detailed guidance based on context:
 | `@scripts/run_query_safe.py` | Execute with safety limits | `python @scripts/run_query_safe.py --db DWH --file q.sql` |
 | `@scripts/find_relationships.py` | Find FK / join paths | `python @scripts/find_relationships.py -s SCHEMA -t TABLE` |
 | `@scripts/sample_data.py` | Sample data + profiling | `python @scripts/sample_data.py -s SCHEMA -t TABLE --profile` |
-| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output. For lineage, use in **multiple rounds** with `scenarios/` (see Phase 2e). | Prefer **--db DWH_ADMIN**. `--table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` — repeat for new table names from each round. |
+| `@scripts/search_procedures.py` | Find procedure/package/function by table or text (Oracle); lineage input/output. For lineage, use in **multiple rounds** with `scenarios/` (see Phase 2e). | Prefer **--db DWH_ADMIN**. `--table TABLE [--schema SCHEMA] --db DWH_ADMIN` — by name: `--name SCHEMA.PKG_X` — repeat for new table names from each round. Add `--format sql` to export a `.sql` text file (comment headers + source text). |
+| `@scripts/search_views.py` | Fetch Oracle VIEW definition/text (from `ALL_VIEWS`) and optionally full DDL. | `python @scripts/search_views.py --name OWNER.VW_X --db DWH` — or `--view VW_X --schema OWNER --db DWH`; add `--ddl` to try `DBMS_METADATA.GET_DDL` / fallback to `CREATE OR REPLACE VIEW`. |
 
 ## Database Connections
 
@@ -667,6 +671,7 @@ knowledge/multiple-tables/ -> Knowledge base: one file per set of joined tables.
 - **Before discover data**: Consult the knowledge folders (`single-table/`, `multiple-tables/`) for accumulated data understanding from previous tasks — check for files matching tables/joins relevant to the task and load them for context before Phase 2.
 - Search BOTH documents/ (DWH + source docs when relevant) AND database metadata for data discovery (Phase 2); when tables or joins are in scope, load matching knowledge files from `single-table/` and `multiple-tables/` if they exist.
 - **When tracing lineage** (table/column used as input or output, lineage within DWH or back to source): In Phase 2, run **iterative lineage expansion** (Phase 2e): alternate multiple rounds of `scripts/search_procedures.py` (--db DWH_ADMIN) and reading/scaning `scenarios/` (ODI extracted scenarios), using each round’s new table/interface/object names as input to the next, until no new references are found or a reasonable round limit is reached, then build one complete lineage view.
+- **When a view definition matters** (e.g., the consumer is a VIEW, or you need the logic behind a VIEW’s output columns): use `scripts/search_views.py` on the target view(s) to inspect the SELECT text/DDL before finalizing the data mapping and query logic.
 - Document data mapping before writing query (Phase 3)
 - Write CTEs with inline comments explaining reasoning (Phase 4)
 - When using relationships from find_relationships/find_join_between: for each candidate join used in data mapping, run a mini-query via run_query_safe (small limit, short timeout) to verify the join returns data; if 0 rows, note "chưa verify được có dữ liệu" and do not treat as confirmed (Phase 2d')
