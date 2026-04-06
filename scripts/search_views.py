@@ -1,5 +1,5 @@
 """
-search_views.py - Fetch Oracle VIEW definition/text by exact name.
+search_views.py - Fetch Oracle VIEW definition/text by view name (substring or exact).
 
 Oracle notes:
 - Uses ALL_VIEWS.TEXT (LONG) to retrieve the view "select text".
@@ -60,19 +60,32 @@ def _oracle_fetch_view_by_name(
     cursor,
     view_name: str,
     owner: str | None,
+    exact: bool = False,
     show_query: bool = False,
 ) -> list[dict]:
     """
-    Fetch VIEW rows by exact name using ALL_VIEWS.
+    Fetch VIEW rows from ALL_VIEWS by view name.
+
+    When exact=False, matches any VIEW whose name contains the given text.
+    Matching is case-insensitive (uses UPPER(VIEW_NAME)) so quoted mixed-case
+    identifiers in the data dictionary still match.
 
     Returns list of dict: schema, name, type='VIEW', text.
     """
+    needle = view_name.strip().upper()
+    if not needle:
+        return []
+
     sql = """
         SELECT OWNER, VIEW_NAME, TEXT
         FROM ALL_VIEWS
-        WHERE VIEW_NAME = :view_name
-    """
-    params: dict[str, Any] = {"view_name": view_name.strip().upper()}
+        WHERE """
+    if exact:
+        sql += "UPPER(VIEW_NAME) = :view_name"
+        params: dict[str, Any] = {"view_name": needle}
+    else:
+        sql += "INSTR(UPPER(VIEW_NAME), :name_substr) > 0"
+        params = {"name_substr": needle}
     if owner:
         sql += " AND OWNER = :owner"
         params["owner"] = owner.strip().upper()
@@ -125,17 +138,19 @@ def search_views(
     object_name: str | None = None,
     db_alias: str = "DWH",
     schema: str | None = None,
+    exact: bool = False,
     ddl: bool = False,
     show_query: bool = False,
 ) -> list[dict]:
     """
-    Fetch Oracle VIEW definition/text by exact name.
+    Fetch Oracle VIEW definition/text by view name (substring match by default).
 
     Args:
-        view_name: e.g. VW_SALES (optionally with --schema)
-        object_name: e.g. VW_SALES or OWNER.VW_SALES (overrides view_name/schema)
+        view_name: substring to find in VIEW_NAME (case-insensitive), or exact name if exact=True
+        object_name: e.g. SALES or OWNER.SALES (overrides view_name/schema); same matching rules
         db_alias: connection alias (default DWH)
         schema: filter by owner/schema (used only when object_name has no owner)
+        exact: if True, require VIEW_NAME equal to the given string (after trim/upper)
         ddl: also try to return full DDL (CREATE OR REPLACE VIEW ...)
         show_query: print SQL debug to stderr
     """
@@ -163,6 +178,7 @@ def search_views(
             cursor=cursor,
             view_name=obj_view_name,
             owner=object_owner,
+            exact=exact,
             show_query=show_query,
         )
 
@@ -241,19 +257,26 @@ def format_sql(results: list[dict]) -> str:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fetch Oracle VIEW definition/text by exact name.")
+    parser = argparse.ArgumentParser(
+        description="Fetch Oracle VIEW definition/text by view name (substring in name by default)."
+    )
     parser.add_argument(
         "--view",
         "-v",
         default=None,
-        help="View name (e.g. VW_SALES). Use with --schema to filter owner.",
+        help="Text to find in view name (e.g. SALES matches VW_SALES). Use --exact for full name only.",
     )
     parser.add_argument(
         "--name",
         "-n",
         default=None,
         dest="object_name",
-        help="Fetch by object name (e.g. VW_SALES or OWNER.VW_SALES). Overrides --view/--schema.",
+        help="Object as text in view name or OWNER.NAME (overrides --view/--schema). Same matching as --view.",
+    )
+    parser.add_argument(
+        "--exact",
+        action="store_true",
+        help="Require exact VIEW_NAME match (trimmed, case-insensitive) instead of substring search.",
     )
     parser.add_argument("--db", default="DWH", help="Database alias (default: DWH)")
     parser.add_argument("--schema", "-s", default=None, help="Owner/schema filter for VIEWs")
@@ -273,6 +296,7 @@ if __name__ == "__main__":
             object_name=args.object_name,
             db_alias=args.db,
             schema=args.schema,
+            exact=args.exact,
             ddl=args.ddl,
             show_query=args.show_query,
         )
